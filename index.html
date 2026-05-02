@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spacewar 3D - Version 0.69</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto Condensed', sans-serif; overflow: hidden; background-color: #000; color: #e2e8f0; }
+        #background-video { position: fixed; right: 0; bottom: 0; min-width: 100%; min-height: 100%; z-index: -1; opacity: 0.3; transition: opacity 0.5s ease; }
+        #overlay-video { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 10; pointer-events: none; } /* GEÄNDERT für Video */
+        canvas { display: block; }
+        .btn { transition: all 0.3s ease; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .modal-bg { background-color: rgba(0,0,0,0.7); z-index: 50; }
+        input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 10px; background: #4a5568; border-radius: 5px; outline: none; opacity: 0.7; transition: opacity .2s; }
+        input[type=range]:hover { opacity: 1; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 25px; height: 25px; background: #63b3ed; cursor: pointer; border-radius: 50%; }
+        input[type=range]::-moz-range-thumb { width: 25px; height: 25px; background: #63b3ed; cursor: pointer; border-radius: 50%; }
+        #defeat-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; display: none; }
+        @keyframes redFlash { 0% { background-color: rgba(139, 0, 0, 0); } 20% { background-color: rgba(139, 0, 0, 0.6); } 100% { background-color: rgba(139, 0, 0, 0); } }
+        .animate-red-flash { animation: redFlash 2s forwards; }
+        #notification { transition: opacity 0.5s ease-in-out; }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .intro-letter {
+            display: inline-block;
+            opacity: 0;
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+        @media (max-width: 640px) {
+            #intro-text {
+                font-size: 1.5rem; /* Tailwind: text-2xl */
+                line-height: 2rem;
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center h-screen p-0 m-0">
+
+    <video autoplay muted loop id="background-video"></video>
+    <audio id="background-music" loop></audio>
+
+    <div id="game-canvas-container" class="absolute top-0 left-0 w-full h-full"></div>
+    <div id="defeat-overlay"></div>
+    <img id="overlay-image" class="absolute top-0 left-0 w-full h-full object-cover z-10 pointer-events-none" src="" alt=" " style="display: none;">
+    <video id="overlay-video" class="absolute top-0 left-0 w-full h-full object-cover z-10 pointer-events-none" autoplay muted loop src="" style="display: none;"></video>
+
+    <div id="intro-overlay" class="fixed inset-0 bg-black z-50 flex items-center justify-center transition-opacity duration-1000">
+        <div id="intro-text" class="text-4xl text-center text-gray-300 font-bold p-8"></div>
+    </div>
+
+
+    <div id="ui-root" class="absolute inset-0 z-30 pointer-events-none">
+        <div id="ui-container" class="relative w-full h-full p-4 flex flex-col items-center">
+            
+            <div id="notification" class="hidden absolute top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg opacity-0 pointer-events-none"></div>
+
+            <div id="setup-container" class="w-full max-w-lg mx-auto text-center p-6 bg-gray-800/70 backdrop-blur-sm rounded-lg shadow-lg pointer-events-auto hidden opacity-0 transition-opacity duration-1000">
+                <h1 class="text-4xl font-bold mb-6 text-gray-200">Spacewar 3D</h1>
+
+                <div class="text-right mb-4">
+                    <button id="toggle-advanced-settings-btn" class="text-gray-400 hover:text-white transition">
+                        Experteneinstellungen ⚙️
+                    </button>
+                </div>
+
+                <div id="advanced-settings-container" class="hidden bg-gray-900/50 p-4 rounded-lg space-y-3 mb-6 border border-gray-700 text-left max-h-[40vh] overflow-y-auto pr-2">
+                    
+                    <h3 class="text-lg font-semibold text-gray-300 col-span-2 mt-2">Spielregeln & Ereignisse</h3>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="planet-bonus-threshold-slider" class="text-sm" title="Ein Spieler erhält einen Verstärkungsbonus, wenn er so viele Planeten oder mehr besitzt.">Bonus ab Planeten:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="planet-bonus-threshold-slider" type="range" min="5" max="20" step="1" class="w-full">
+                            <span id="planet-bonus-threshold-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="planet-bonus-amount-slider" class="text-sm" title="Die Anzahl der zusätzlichen Raumschiffe, die ein Spieler als Bonus pro Runde erhält.">Bonus-Raumschiffe:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="planet-bonus-amount-slider" type="range" min="1" max="10" step="1" class="w-full">
+                            <span id="planet-bonus-amount-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="toggle-random-events" class="text-sm" title="Aktiviert oder deaktiviert alle zufälligen Ereignisse wie Sonnenstürme oder Meteoritenschauer.">Zufallsereignisse:</label>
+                        <div class="flex items-center justify-start">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-random-events" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                <span id="toggle-random-events-label" class="ml-3 text-sm font-medium text-gray-300">Aus</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="event-chance-slider" class="text-sm" title="Die prozentuale Wahrscheinlichkeit, dass pro Runde ein Zufallsereignis eintritt.">Ereignis-Chance (%):</label>
+                        <div class="flex items-center gap-2">
+                            <input id="event-chance-slider" type="range" min="0" max="50" step="1" class="w-full">
+                            <span id="event-chance-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="meteor-damage-slider" class="text-sm" title="Prozentualer Anteil der Schiffe, die ein Meteoritenschauer auf getroffenen Planeten zerstört.">Meteoriten-Schaden (%):</label>
+                        <div class="flex items-center gap-2">
+                            <input id="meteor-damage-slider" type="range" min="10" max="90" step="5" class="w-full">
+                            <span id="meteor-damage-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+
+                    <h3 class="text-lg font-semibold text-gray-300 col-span-2 mt-4">Ereignis-Gewichtung</h3>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-solar-storm-slider" class="text-sm" title="Gewichtung für 'Sonnensturm'. Ein höheres Gewicht im Vergleich zu anderen Ereignissen macht dieses wahrscheinlicher.">Gewicht Sonnensturm:</label>
+                        <div class="flex items-center gap-2"><input id="weight-solar-storm-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-solar-storm-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-meteor-shower-slider" class="text-sm" title="Gewichtung für 'Meteoritenschauer'.">Gewicht Meteoriten:</label>
+                        <div class="flex items-center gap-2"><input id="weight-meteor-shower-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-meteor-shower-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-asteroid-impact-slider" class="text-sm" title="Gewichtung für 'Asteroideneinschlag' (Planetenzerstörung). Sollte niedrig sein!">Gewicht Asteroid:</label>
+                        <div class="flex items-center gap-2"><input id="weight-asteroid-impact-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-asteroid-impact-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-supernova-slider" class="text-sm" title="Gewichtung für 'Supernova' (zerstört mehrere Planeten). Sollte sehr niedrig sein!">Gewicht Supernova:</label>
+                        <div class="flex items-center gap-2"><input id="weight-supernova-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-supernova-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-passing-comet-slider" class="text-sm" title="Gewichtung für das harmlose Ereignis 'Komet'.">Gewicht Komet:</label>
+                        <div class="flex items-center gap-2"><input id="weight-passing-comet-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-passing-comet-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-ancient-probe-slider" class="text-sm" title="Gewichtung für das harmlose Ereignis 'Antike Sonde'.">Gewicht Sonde:</label>
+                        <div class="flex items-center gap-2"><input id="weight-ancient-probe-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-ancient-probe-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="weight-mysterious-signal-slider" class="text-sm" title="Gewichtung für das harmlose Text-Ereignis 'Mysteriöses Signal'.">Gewicht Signal:</label>
+                        <div class="flex items-center gap-2"><input id="weight-mysterious-signal-slider" type="range" min="0" max="20" step="1" class="w-full"><span id="weight-mysterious-signal-value" class="font-mono text-white w-8 text-center"></span></div>
+                    </div>
+
+
+                    <h3 class="text-lg font-semibold text-gray-300 col-span-2 mt-4">KI-Verhalten</h3>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="attacker-win-chance-slider" class="text-sm" title="Legt die Grundwahrscheinlichkeit (in %) fest, mit der eine einzelne angreifende Einheit eine verteidigende Einheit in einer Angriffswelle besiegt.">Angreifer-Gewinnchance (%):</label>
+                        <div class="flex items-center gap-2">
+                            <input id="attacker-win-chance-slider" type="range" min="10" max="90" step="1" class="w-full">
+                            <span id="attacker-win-chance-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="attack-base-slider" class="text-sm" title="Ein Schwellenwert. Die KI greift nur an, wenn die berechnete 'Güte' eines Angriffs diesen Wert übersteigt. Höher = vorsichtigere KI.">Angriffs-Basiswert:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="attack-base-slider" type="range" min="0" max="10" step="0.5" class="w-full">
+                            <span id="attack-base-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="attack-multiplier-slider" class="text-sm" title="Multipliziert den Aggressionslevel der KI, um den Angriffs-Basiswert zu senken. Höher = KIs mit hohem Aggressionslevel greifen schon bei geringerer Güte an.">Aggressions-Multiplikator:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="attack-multiplier-slider" type="range" min="0.1" max="2.0" step="0.1" class="w-full">
+                            <span id="attack-multiplier-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="late-game-turn-input" class="text-sm" title="Die Zugnummer, ab der die KI beginnt, zunehmend aggressiver zu werden.">Aggressions-Start ab Zug:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="late-game-turn-input" type="number" min="1" max="50" class="w-20 bg-gray-700 text-white p-1 rounded">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="late-game-increase-slider" class="text-sm" title="Um wie viel der Angriffs-Basiswert pro Zug (nach dem Start-Zug) gesenkt wird. Macht die KI im späten Spielverlauf immer angriffslustiger.">Aggressions-Steigerung:</label>
+                        <div class="flex items-center gap-2">
+                            <input id="late-game-increase-slider" type="range" min="0.0" max="1.0" step="0.05" class="w-full">
+                            <span id="late-game-increase-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="low-aggro-chance-slider" class="text-sm" title="Die prozentuale Chance, dass eine neue KI bei Spielstart einen niedrigen Aggressionslevel (1-3, 'passiv') erhält.">Chance auf tiefe Aggro (%):</label>
+                        <div class="flex items-center gap-2">
+                            <input id="low-aggro-chance-slider" type="range" min="0" max="50" step="1" class="w-full">
+                            <span id="low-aggro-chance-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 items-center gap-4">
+                        <label for="high-aggro-chance-slider" class="text-sm" title="Die prozentuale Chance, dass eine neue KI bei Spielstart einen hohen Aggressionslevel (8-10, 'sehr aggressiv') erhält. Der Rest wird im mittleren Bereich (4-7) zugewiesen.">Chance auf hohe Aggro (%):</label>
+                        <div class="flex items-center gap-2">
+                            <input id="high-aggro-chance-slider" type="range" min="0" max="50" step="1" class="w-full">
+                            <span id="high-aggro-chance-value" class="font-mono text-white w-8 text-center"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center items-center mb-4">
+                    <label for="player-count" class="text-xl font-semibold text-white mr-4">Gesamtzahl der Spieler:</label>
+                    <select id="player-count" class="bg-gray-700 text-white p-2 rounded-lg text-lg">
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+                 <div class="flex justify-center items-center mb-4">
+                    <label for="territory-count-slider" class="text-xl font-semibold text-white mr-4">Anzahl der Planeten:</label>
+                    <div class="flex items-center gap-2">
+                        <input id="territory-count-slider" type="range" min="15" max="50" value="25" class="w-32 bg-gray-700" style="height: 20px;">
+                        <span id="territory-count-value" class="font-mono text-white w-8 text-center text-lg">25</span>
+                    </div>
+                </div>
+                <div class="flex justify-center items-center mb-6">
+                     <label for="difficulty" class="text-xl font-semibold text-white mr-4">Schwierigkeit:</label>
+                    <select id="difficulty" class="bg-gray-700 text-white p-2 rounded-lg text-lg">
+    <option value="very_easy">Sehr Leicht</option>
+    <option value="easy">Leicht</option>
+    <option value="normal" selected>Normal</option>
+    <option value="hard">Schwer</option>
+</select>
+                </div>
+                <div class="flex flex-col items-center gap-4">
+                    <button id="start-game-btn" class="btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg text-lg">Neues Spiel starten</button>
+                    <button id="load-game-btn" class="hidden btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg text-lg">Spielstand laden</button>
+                    <button id="start-demo-btn" class="btn bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-6 rounded-lg text-lg">Demo-Modus</button>
+                </div>
+
+                <div class="mt-8 text-center">
+                    <a href="https://spiele.frank-kemper.com#rechtliches" target="_blank" class="text-gray-400 hover:text-white text-sm">Impressum & Datenschutz</a>
+                </div>
+            </div>
+
+            <div id="game-ui" class="w-full max-w-7xl mx-auto flex flex-col items-center hidden flex-grow">
+                <div id="status-bar" class="w-full bg-gray-800/70 backdrop-blur-sm p-3 rounded-lg shadow-lg mb-4 pointer-events-auto cursor-pointer">
+                    <p id="status-text" class="text-xl font-semibold text-white text-center mb-2">Spiel wird initialisiert...</p>
+                    <div id="players-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-center"></div>
+                </div>
+            </div>
+            
+            <div id="controls" class="absolute top-28 left-1/2 -translate-x-1/2 pointer-events-auto">
+                <button id="end-turn-btn" class="btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg text-lg shadow-md" style="display: none;">Zug beenden</button>
+            </div>
+
+            <div id="media-controls" class="hidden absolute bottom-4 left-0 bg-gray-900/70 backdrop-blur-sm rounded-r-lg flex flex-col gap-2 pointer-events-auto text-xs w-64 transition-transform duration-500 ease-in-out">
+                 <div id="toggle-media-controls-btn" class="absolute -right-8 top-0 bg-gray-900/70 p-2 rounded-r-lg cursor-pointer">
+                    <span id="toggle-media-icon" class="text-white text-lg transition-transform duration-300 transform">&#9664;</span>
+                 </div>
+                 <div class="p-3 space-y-2">
+                    <div>
+                        <label for="player-name-input" class="font-bold">Dein Name:</label>
+                        <input type="text" id="player-name-input" class="w-full bg-gray-700 text-white p-1 rounded mt-1 border border-gray-600" value="Spieler">
+                    </div>
+                    <div><button id="save-game-btn" class="w-full btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded-lg text-xs">Spiel speichern</button></div>
+                    <div><label for="video-select" class="font-bold">Hintergrund:</label><select id="video-select" class="w-full bg-gray-700 text-white p-1 rounded mt-1"></select></div>
+                    <div><label for="music-select" class="font-bold">Musik:</label><select id="music-select" class="w-full bg-gray-700 text-white p-1 rounded mt-1"></select></div>
+                    <div><label for="sound-set-select" class="font-bold">Sound-Set:</label><select id="sound-set-select" class="w-full bg-gray-700 text-white p-1 rounded mt-1"></select></div>
+                    <div><label for="image-select" class="font-bold">Vordergrund:</label><select id="image-select" class="w-full bg-gray-700 text-white p-1 rounded mt-1"></select></div>
+                    <div class="flex items-center gap-2"><button id="mute-btn" class="p-2 bg-gray-700 rounded">🔇</button><input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5"></div>
+                 </div>
+            </div>
+
+
+            <div id="extra-links" class="hidden absolute bottom-4 right-4 flex gap-4 text-sm pointer-events-auto">
+                <button id="logbook-btn" class="text-gray-400 hover:text-white">Logbuch</button>
+                <button id="rules-btn" class="text-gray-400 hover:text-white">Regeln</button>
+            </div>
+            
+            <div id="logbook-modal" class="hidden fixed inset-0 modal-bg flex items-center justify-center pointer-events-auto">
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-lg shadow-2xl text-left w-11/12 max-w-3xl flex flex-col">
+                    <h2 class="text-3xl font-bold mb-4">Logbuch</h2>
+                    <div id="logbook-content" class="space-y-2 bg-gray-900/50 p-4 rounded-md overflow-y-auto max-h-[70vh] text-sm"></div>
+                    <div class="text-center mt-6">
+                        <button id="close-logbook-btn" class="btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded">Schließen</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="rules-modal" class="hidden fixed inset-0 modal-bg flex items-center justify-center pointer-events-auto"><div class="bg-gray-800/90 backdrop-blur-sm p-8 rounded-lg shadow-2xl text-left w-11/12 max-w-lg"><h2 class="text-3xl font-bold mb-4">Spielregeln</h2><div class="space-y-3"><p><strong>Ziel des Spiels:</strong> Erobere alle Planeten in der Galaxie!</p><p><strong>Rundenablauf:</strong> Dein Zug besteht aus bis zu drei Phasen:</p><ol class="list-decimal list-inside space-y-2 pl-4"><li>
+    <strong>Verstärkungsphase:</strong> Du erhältst neue Raumschiffe basierend auf der Anzahl deiner Planeten. Der Schwierigkeitsgrad beeinflusst die Verstärkung für dich und die KI kumulativ:
+    <ul class="list-disc list-inside pl-4 mt-2 text-sm">
+        <li><strong>Sehr Leicht:</strong> Du: <strong>+3</strong> Schiffe / KI: <strong>-2</strong> Schiffe</li>
+        <li><strong>Leicht:</strong> Du: <strong>+1</strong> Schiff / KI: <strong>-1</strong> Schiff</li>
+        <li><strong>Normal:</strong> Keine Boni oder Mali</li>
+        <li><strong>Schwer:</strong> Du: keine Boni / KI: <strong>+2</strong> Schiffe</li>
+    </ul>
+    Klicke auf deine Planeten, um die neuen Schiffe zu platzieren.
+</li><li><strong>Angriffsphase:</strong> Wähle einen deiner Planeten (mit mehr als 1 Raumschiff) und klicke dann auf einen benachbarten feindlichen Planeten, um ihn anzugreifen. Der Kampf wird in Wellen entschieden: Für jedes deiner angreifenden Schiffe wird einzeln gegen ein verteidigendes Schiff gekämpft. Du kannst so lange und so oft angreifen, wie du möchtest und über genügend Schiffe verfügst.</li><li><strong>Befestigungsphase:</strong> Nachdem du deine Angriffe beendet hast (klicke auf "Befestigungsphase"), kannst du einmalig Raumschiffe zwischen zwei deiner Planeten verschieben, die durch eine ununterbrochene Kette deiner Planeten verbunden sind.</li></ol><p>Klicke auf "Zug beenden", um die Runde abzuschließen. Danach sind die KI-Gegner an der Reihe.</p><p><strong>Zufallsereignisse:</strong> Sei auf der Hut, denn es können jederzeit unvorhergesehene Ereignisse die Galaxie erschüttern! Dazu gehören gefährliche <span class="text-yellow-400">Sonnenstürme</span>, die Routen durcheinanderwirbeln, zerstörerische <span class="text-orange-400">Meteoritenschauer</span> oder gar planetenvernichtende <span class="text-red-500">Asteroideneinschläge</span> und <span class="text-purple-400">Supernovae</span>. Aber auch harmlose Phänomene wie Kometen oder mysteriöse Sonden können auftreten.</p></div><div class="text-center mt-6"><button id="close-rules-btn" class="btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded">Verstanden</button></div></div></div>
+            <div id="game-over-modal" class="hidden fixed inset-0 modal-bg flex items-center justify-center pointer-events-auto"><div class="bg-gray-800/90 backdrop-blur-sm p-8 rounded-lg shadow-2xl text-center"><h2 id="game-over-title" class="text-3xl font-bold mb-4"></h2><p id="game-over-text" class="text-xl mb-6"></p><button id="restart-btn" class="btn bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-xl">Neues Spiel</button></div></div>
+            <div id="player-defeat-modal" class="hidden fixed inset-0 modal-bg flex items-center justify-center pointer-events-auto"><div class="bg-gray-800/90 backdrop-blur-sm p-8 rounded-lg shadow-2xl text-center"><h2 class="text-3xl font-bold mb-4 text-red-500">Du wurdest besiegt!</h2><p class="text-xl mb-6"></p><button id="close-defeat-btn" class="btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded">Zuschauen</button></div></div>
+            <div id="move-troops-modal" class="hidden fixed inset-0 modal-bg flex items-center justify-center pointer-events-auto"><div class="bg-gray-800/90 backdrop-blur-sm p-8 rounded-lg shadow-2xl text-center w-11/12 max-w-sm"><h2 class="text-2xl font-bold mb-4">Raumschiffe verschieben</h2><div class="flex items-center gap-4"><input type="range" id="move-ships-slider" min="1" value="1"><span id="slider-value" class="text-2xl font-bold w-12 text-center">1</span></div><div class="flex justify-center gap-4 mt-6"><button id="confirm-move-btn" class="btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded">Bestätigen</button><button id="cancel-move-btn" class="btn bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded">Abbrechen</button></div></div></div>
+        </div>
+    </div>
+
+    <script>
+        // --- Globale Variablen ---
+        const KI_CONFIG = {
+    attackerWinChance: 0.40,
+    attackThresholdConfig: { baseValue: 5, aggressionMultiplier: 0.5 },
+    lateGameAggression: { startTurn: 5, increasePerTurn: 0.2 },
+    maxAttacksPerDifficulty: { very_easy: 1, easy: 1, normal: 2, hard: 3 },
+    aggressionWeights: { lowChance: 3, highChance: 3 },
+    fortifyMovesPerDifficulty: { very_easy: 0, easy: 1, normal: 2, hard: 3 }
+};
+
+        const GAME_RULES = {
+            planetBonusThreshold: 9,
+            planetBonusAmount: 2
+        };
+
+        const EVENTS_CONFIG = {
+            enabled: true,
+            chancePerTurn: 0.1,
+            meteorDamagePercent: 0.5,
+            maxMeteorTargets: 3,
+            weights: {
+                solarStorm: 3,
+                meteorShower: 4,
+                asteroidImpact: 1,
+                supernova: 1, // <-- NEU
+                passingComet: 8,
+                ancientProbe: 5,
+                mysteriousSignal: 10
+            }
+        };
+
+        let NUM_PLAYERS, NUM_TERRITORIES;
+        let turnCounter = 0;
+        const PLAYER_COLORS = ['#FFFFFF', '#63b3ed', '#f56565', '#48bb78', '#f6e05e', '#ed8936', '#b794f4'];
+        const MOON_COLORS = [0xaaaaaa, 0x999999, 0xcccccc, 0x8B4513, 0xA0522D, 0xD2B48C, 0xF5F5DC];
+        const AI_RACES = [
+    { name: "Zhyr'kallan", description: "Ein uraltes Volk aus flüssigem Silizium, das in Gasriesen lebt." },
+    { name: "Vornethi", description: "Raumfahrende Schwarmintelligenz, die sich in Kristallnetzen organisiert." },
+    { name: "Turexxanier", description: "Reptiloide Nomaden mit einer Kultur aus Klang und Vibration." },
+    { name: "Ishenari", description: "Ätherische Wesen, die sich in Nebeln materialisieren und telepathisch kommunizieren." },
+    { name: "Mol'Darak", description: "Biomechanische Krieger, die schwarze Sonnen anbeten und aus dunkler Materie geboren werden." },
+    { name: "Die Chronovoren", description: "Zeit-parasitäre Wesen, die die Kausalität als Waffe einsetzen." }
+];
+        const PLANET_NAME_PREFIXES = ["Zeta", "Kyber", "Orion", "Cygnus", "Andro", "Sirius", "Rigel", "Deneb", "Altair", "Vega"];
+        const PLANET_NAME_SUFFIXES = ["Prime", "Secundus", "X1", "7", "IV", "IX", "Major", "Minor", "Alpha", "Omega"];
+
+        let aiPlayers = [], territories = [], animations = [];
+        let activeEffects = [];
+        let gameState, currentPlayerId, reinforcements, selectedTerritory, fortifySource, hasFortified, difficulty, hoveredTerritory;
+        let playerDefeatedNotified;
+        let isDemoMode = false;
+        let isActionInProgress = false;
+        
+        let gameLog = [];
+        let gameStartTime;
+        let humanPlayerName = 'Spieler';
+
+        // --- 3D-Variablen ---
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let planetMeshes = [], connectionLines = [], fireworkParticles = [];
+        
+        // --- Media Playlists ---
+        const videoPlaylist = [ { name: "Ohne Hintergrundvideo", url: "" }, { name: "Blauer Nebel", url: "SpacewarHG.mp4" }, { name: "Galaxie", url: "SpacewarHG01.mp4" }, { name: "Sterne und Planeten", url: "SpacewarHG02(720Px).mp4" }, { name: "Spiralgalaxie", url: "SpacewarHG03.mp4" }, { name: "Sterne", url: "SpacewarHG04.mp4" }, { name: "Jupiter", url: "SpacewarHG05.mp4" }, { name: "Sterne II", url: "SpacewarHG06.mp4" }];
+        const musicPlaylist = [ { name: "Stille", url: "" }, { name: "Episch", url: "musik.mp3" }, { name: "Tiefgehend", url: "musik01.mp3" }, { name: "Futuristisch", url: "musik02.mp3" }, { name: "Transzendenz", url: "musik03.mp3" }, { name: "Space", url: "musik04.mp3" }];
+        
+        // Playlist für den Vordergrund, kann Bilder und Videos enthalten.
+const mediaOverlayPlaylist = [ 
+    { name: "Keins", url: "" },
+    { name: "Cockpit", url: "VG.png" },
+    { name: "Fenster", url: "VG01.png" },
+     { name: "Cockpit II", url: "VG02.png" },
+    { name: "Mond", url: "VG03.png" },
+    { name: "Raumschiff", url: "VG04.png" }
+];
+
+
+        // --- Sound System ---
+        const soundEventMap = {
+            attack: "angriff",
+            impact: "einschlag",
+            planet_win: "gewonnen",
+            planet_lose: "verloren",
+            attack_fail: "fehlgeschlagen",
+            reinforce: "setzen",
+            fortify: "verschieben",
+            game_win: "sieg",
+            game_over: "gameover",
+            solar_storm: "sonnensturm", // Beispiel für Sonnensturm
+            meteor_shower: "meteorschauer", // Beispiel für Meteoritenschauer
+            asteroid_impact: "asteroid", // Beispiel für Asteroideneinschlag
+            supernova_event: "supernova", // Beispiel für Supernova
+            passing_comet: "komet", // Beispiel für Komet
+            ancient_probe: "sonde", // Beispiel für Antike Sonde
+            mysterious_signal: "signal" // Beispiel für Mysteriöses Signal
+        };
+        let currentSoundSetIndex = "1";
+        let isGloballyMuted = false;
+        let globalVolume = 0.5;
+        
+        function playSound(eventName) {
+            if (isGloballyMuted) return;
+
+            const baseName = soundEventMap[eventName];
+            if (!baseName) return;
+
+            const fileName = `${baseName}0${currentSoundSetIndex}.mp3`;
+            const audio = new Audio(fileName);
+            audio.volume = globalVolume;
+            
+            audio.play().catch(e => { /* Fehler beim Abspielen ignorieren */ });
+        }
+
+        // --- Initialisierungs- und Setup-Funktionen ---
+        function initThree() {
+            const container = document.getElementById('game-canvas-container');
+            if (renderer) {
+                renderer.dispose();
+                if(renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+            }
+            container.innerHTML = '';
+            
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 30;
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+            
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+            controls.enablePan = true; controls.minDistance = 10; controls.maxDistance = 100;
+            
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5); scene.add(directionalLight);
+            raycaster = new THREE.Raycaster(); mouse = new THREE.Vector2();
+        }
+           
+        function generateWeightedAggressionLevel() {
+            const roll = Math.random() * 100;
+            const lowThreshold = KI_CONFIG.aggressionWeights.lowChance;
+            const highThreshold = lowThreshold + KI_CONFIG.aggressionWeights.highChance;
+            if (roll < lowThreshold) return Math.floor(Math.random() * 3) + 1;
+            if (roll < highThreshold) return Math.floor(Math.random() * 3) + 8;
+            return Math.floor(Math.random() * 4) + 4;
+        }
+
+        function generateRandomPlanetName() {
+            const prefix = PLANET_NAME_PREFIXES[Math.floor(Math.random() * PLANET_NAME_PREFIXES.length)];
+            const suffix = PLANET_NAME_SUFFIXES[Math.floor(Math.random() * PLANET_NAME_SUFFIXES.length)];
+            return `${prefix}-${suffix}`;
+        }
+
+        function initGame(fromSave = false) {
+            gameStartTime = Date.now();
+            gameLog = [];
+            logEvent(isDemoMode ? "Demo-Modus gestartet. Alle Spieler sind KIs." : "Ein neues Spiel beginnt!");
+
+            if (!fromSave) {
+                NUM_PLAYERS = parseInt(document.getElementById('player-count').value, 10);
+                NUM_TERRITORIES = parseInt(document.getElementById('territory-count-slider').value, 10);
+                difficulty = document.getElementById('difficulty').value;
+                aiPlayers = [];
+                const availableRaces = [...AI_RACES].sort(() => 0.5 - Math.random());
+
+                if (isDemoMode) {
+                    document.getElementById('player-name-input').parentElement.style.display = 'none';
+                    for (let i = 1; i <= NUM_PLAYERS; i++) {
+                        const race = availableRaces.pop() || { name: `KI ${i}`};
+                        aiPlayers.push({ id: i, name: race.name, description: race.description, aggressionLevel: generateWeightedAggressionLevel() });
+                    }
+                } else {
+                     document.getElementById('player-name-input').parentElement.style.display = 'block';
+                    for (let i = 2; i <= NUM_PLAYERS; i++) {
+                        const race = availableRaces.pop() || { name: `KI ${i-1}`};
+                        aiPlayers.push({ id: i, name: race.name, description: race.description, aggressionLevel: generateWeightedAggressionLevel() });
+                    }
+                }
+
+                territories = [];
+                const galaxySize = 40;
+                for (let i = 0; i < NUM_TERRITORIES; i++) {
+                    const newRadius = 0.8 + Math.random() * 1.6;
+                    let validPos = false, x, y, z, attempts = 0;
+                    while(!validPos && attempts < 100) {
+                        x = (Math.random() - 0.5) * galaxySize; y = (Math.random() - 0.5) * galaxySize; z = (Math.random() - 0.5) * galaxySize;
+                        validPos = !territories.some(t => new THREE.Vector3(x,y,z).distanceTo(t.position) < (newRadius + t.radius) * 2.5);
+                        attempts++;
+                    }
+                    territories.push({ id: i, owner: 0, troops: 0, connections: [], position: new THREE.Vector3(x, y, z), moons: [], radius: newRadius, name: generateRandomPlanetName() });
+                }
+                territories.forEach(t1 => {
+                    let sortedByDist = territories.map(t2 => ({t2, dist: t1.position.distanceTo(t2.position)})).sort((a,b) => a.dist - b.dist);
+                    for(let i=1; i < 4; i++){
+                        if (sortedByDist.length > i) {
+                            let t2 = sortedByDist[i].t2;
+                            if (t1.id !== t2.id && !t1.connections.includes(t2.id)) { t1.connections.push(t2.id); t2.connections.push(t1.id); }
+                        }
+                    }
+                });
+                let territoryIds = territories.map(t => t.id).sort(() => Math.random() - 0.5);
+                territoryIds.forEach((id, index) => { territories[id].owner = (index % NUM_PLAYERS) + 1; territories[id].troops = 1; });
+                hasFortified = false; reinforcements = 0; playerDefeatedNotified = false;
+            }
+
+            document.getElementById('setup-container').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'flex';
+            document.getElementById('media-controls').style.display = 'flex';
+            document.getElementById('extra-links').style.display = 'flex';
+            initThree();
+            createPlanetMeshes();
+            setupUI();
+
+            if (fromSave) {
+                 updateStatus();
+            } else if (isDemoMode) {
+                 currentPlayerId = 0; 
+                 gameState = 'INIT';
+                 endTurn();
+            } else {
+                 currentPlayerId = 1; 
+                 gameState = 'INIT';
+                 startPlayerTurn();
+            }
+        }
+        
+        function createPlanetMeshes() {
+            planetMeshes.forEach(p => scene.remove(p));
+            planetMeshes = [];
+
+            territories.forEach(planetData => {
+                const planetGroup = new THREE.Group();
+                planetGroup.position.copy(planetData.position);
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 256; canvas.height = 128;
+                const context = canvas.getContext('2d');
+                context.fillStyle = '#888';
+                context.fillRect(0,0,256,128);
+                for(let i=0; i<50; i++) {
+                    context.beginPath();
+                    context.arc(Math.random()*256, Math.random()*128, Math.random()*10+2, 0, Math.PI*2);
+                    context.fillStyle = `rgba(0,0,0,${Math.random()*0.3 + 0.1})`;
+                    context.fill();
+                }
+                const texture = new THREE.CanvasTexture(canvas);
+                const material = new THREE.MeshLambertMaterial({ map: texture, emissive: 0x000000 });
+                
+                const planetMesh = new THREE.Mesh(new THREE.SphereGeometry(planetData.radius, 32, 32), material);
+                planetMesh.userData.name = planetData.name;
+                planetGroup.add(planetMesh);
+                
+                if (Math.random() > 0.6) {
+                    const numMoons = Math.floor(Math.random() * 2) + 1;
+                    for(let i=0; i<numMoons; i++) {
+                        const moonData = { angle: Math.random() * Math.PI * 2, distance: planetData.radius + 0.8 + Math.random() * 0.5, radius: Math.random() * 0.2 + 0.1, speed: (Math.random() - 0.5) * 0.02 };
+                        planetData.moons.push(moonData);
+                        const moonGeo = new THREE.SphereGeometry(moonData.radius, 10, 10);
+                        const moonMat = new THREE.MeshLambertMaterial({color: MOON_COLORS[Math.floor(Math.random() * MOON_COLORS.length)]});
+                        const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+                        moonMesh.userData = moonData;
+                        planetGroup.add(moonMesh);
+                    }
+                }
+
+                if (Math.random() > 0.7) {
+                    const numRings = Math.floor(Math.random() * 3) + 1;
+                    const ringColor = new THREE.Color(Math.random(), Math.random(), Math.random());
+                    for(let i = 0; i < numRings; i++) {
+                        const ringGeo = new THREE.RingGeometry(planetData.radius + 0.5 + i*0.4, planetData.radius + 0.8 + i*0.4, 64);
+                        const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, side: THREE.DoubleSide, transparent: true, opacity: 0.6});
+                        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                        ringMesh.rotation.x = Math.PI / 2;
+                        planetGroup.add(ringMesh);
+                    }
+                    planetGroup.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                }
+
+                const spriteCanvas = document.createElement('canvas');
+                spriteCanvas.width = 128; spriteCanvas.height = 128;
+                const spriteMaterial = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(spriteCanvas), depthTest: false });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(planetData.radius * 2, planetData.radius * 2, 1);
+                sprite.position.y = planetData.radius + 0.8;
+                sprite.userData.type = 'troop_sprite';
+                planetGroup.add(sprite);
+
+                planetGroup.userData = { id: planetData.id, type: 'planet' };
+                planetMeshes.push(planetGroup);
+                scene.add(planetGroup);
+            });
+            updatePlanetVisuals();
+        }
+
+        function updatePlanetVisuals() {
+            planetMeshes.forEach(meshGroup => {
+                const planetData = territories.find(p => p.id === meshGroup.userData.id);
+                if (!planetData) return;
+                
+                const planetMesh = meshGroup.children.find(c => c.geometry.type === 'SphereGeometry');
+                if(!planetMesh) return;
+
+                planetMesh.material.color.set(new THREE.Color(PLAYER_COLORS[planetData.owner]));
+
+                const isSelected = (selectedTerritory && planetData.id === selectedTerritory.id) || (fortifySource && planetData.id === fortifySource.id);
+                const isHovered = (hoveredTerritory && planetData.id === hoveredTerritory.id);
+                planetMesh.material.emissive.setHex(isSelected ? 0xffff00 : (isHovered && (selectedTerritory || fortifySource) ? 0xffaa00 : 0x000000));
+                
+                updateSinglePlanetVisual(planetData);
+            });
+            updateConnectionLines();
+        }
+
+        function updateConnectionLines() {
+            connectionLines.forEach(line => scene.remove(line));
+            connectionLines = [];
+            const drawnConnections = new Set();
+            territories.forEach(t1 => {
+                t1.connections.forEach(t2Id => {
+                    const key1 = `${Math.min(t1.id, t2Id)}-${Math.max(t1.id, t2Id)}`;
+                    if(drawnConnections.has(key1)) return;
+                    const t2 = territories.find(t => t.id === t2Id);
+                    if(!t2) return;
+                    const material = new THREE.LineBasicMaterial({ color: (t1.owner === t2.owner && t1.owner !== 0) ? new THREE.Color(PLAYER_COLORS[t1.owner]) : 0x4a5568, transparent: true, opacity: 0.5 });
+                    const geometry = new THREE.BufferGeometry().setFromPoints([t1.position, t2.position]);
+                    const line = new THREE.Line(geometry, material);
+                    connectionLines.push(line);
+                    scene.add(line);
+                    drawnConnections.add(key1);
+                });
+            });
+        }
+
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
+        function startPlayerTurn() {
+            if (checkGameOver()) return;
+            currentPlayerId = 1;
+            hasFortified = false;
+            if (!territories.some(t => t.owner === currentPlayerId)) {
+                endTurn();
+                return;
+            }
+            
+           let playerTerritories = territories.filter(t => t.owner === 1);
+reinforcements = Math.max(3, Math.floor(playerTerritories.length / 3));
+
+// --- Kumulative Spieler-Boni ---
+let playerBonus = 0;
+switch (difficulty) {
+    case 'very_easy':
+        playerBonus += 2; // Bonus für "Sehr Leicht"
+        // fallthrough, um den Bonus von "Leicht" zu addieren
+    case 'easy':
+        playerBonus += 1; // Bonus für "Leicht" (und "Sehr Leicht")
+        break;
+    // 'normal' und 'hard' geben keinen Spieler-Bonus
+}
+
+if (playerBonus > 0) {
+    reinforcements += playerBonus;
+    logEvent(`Schwierigkeits-Bonus: Du erhältst ${playerBonus} zusätzliche Raumschiffe.`);
+}
+
+            if (playerTerritories.length >= GAME_RULES.planetBonusThreshold) {
+                reinforcements += GAME_RULES.planetBonusAmount;
+                logEvent(`${getPlayerNameById(1)} erhält einen Bonus von ${GAME_RULES.planetBonusAmount} Schiffen für die Kontrolle über ${playerTerritories.length} Planeten!`);
+            }
+            
+            logEvent(`${getPlayerNameById(1)} ist am Zug und erhält ${reinforcements} Verstärkung(en).`);
+            gameState = 'REINFORCE';
+            updateStatus();
+            playSound('reinforce');
+        }
+
+        function handleReinforce(planet) {
+            if (planet.owner !== 1 || reinforcements <= 0) return;
+            logEvent(`${getPlayerNameById(1)} platziert 1 Raumschiff auf ${planet.name}.`);
+            planet.troops++; 
+            reinforcements--;
+            playSound('reinforce');
+            if (reinforcements === 0) gameState = 'ATTACK';
+            updateStatus();
+        }
+
+        async function executeFullAttackSequence(source, target) {
+            isActionInProgress = true; 
+            
+            try {
+                const attackerName = getPlayerNameById(source.owner);
+                const defenderName = getPlayerNameById(target.owner);
+                logEvent(`${attackerName} greift ${defenderName} auf ${target.name} an. (Start: A:${source.troops} vs D:${target.troops})`);
+                
+                while (source.troops > 1 && target.troops > 0) {
+                    if (target.owner === source.owner) break;
+
+                    await animateAttackWindup(source);
+
+                    const startPos = source.position.clone();
+                    const endPos = target.position.clone();
+                    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+                    mesh.position.copy(startPos);
+                    scene.add(mesh);
+                    playSound('attack');
+
+                    await new Promise(resolve => {
+                        animations.push({
+                            mesh, startPos, endPos, progress: 0,
+                            onComplete: () => {
+                                scene.remove(mesh);
+                                createImpactEffect(target.position, target.radius);
+                                resolve();
+                            }
+                        });
+                    });
+
+                    const attackerWinsWave = Math.random() < KI_CONFIG.attackerWinChance;
+
+                    if (attackerWinsWave) {
+                        target.troops--;
+                    } else {
+                        source.troops--;
+                        animateAttackerLoss(source);
+                    }
+
+                    updateSinglePlanetVisual(source);
+                    if (target.troops > 0) updateSinglePlanetVisual(target);
+                    
+                    await delay(100);
+                }
+
+                if (target.troops <= 0) {
+                    logEvent(`SIEG! ${attackerName} hat ${target.name} erobert.`);
+                    target.owner = source.owner;
+                    target.troops = source.troops - 1;
+                    source.troops = 1;
+                    if (!isGameFinished()) playSound('planet_win');
+                } else {
+                    logEvent(`ANGRIFF BEENDET. ${defenderName} hat ${target.name} verteidigt.`);
+                    playSound('attack_fail');
+                }
+
+            } finally {
+                selectedTerritory = null;
+                updatePlanetVisuals();
+                if (gameState !== 'GAME_OVER') updateStatus();
+                isActionInProgress = false; 
+            }
+        }
+        
+        async function animateAttackWindup(planet) {
+            const meshGroup = planetMeshes.find(m => m.userData.id === planet.id);
+            if (!meshGroup) return;
+
+            const planetMesh = meshGroup.children.find(c => c.geometry.type === 'SphereGeometry');
+            if (planetMesh) {
+                const originalColor = planetMesh.material.emissive.getHex();
+                planetMesh.material.emissive.setHex(0xff0000); 
+                await delay(150);
+                planetMesh.material.emissive.setHex(originalColor);
+            }
+        }
+        
+        async function handleAttack(source, target) {
+            if (source.owner !== currentPlayerId || target.owner === currentPlayerId || source.troops <= 1 || !source.connections.includes(target.id)) return;
+            await executeFullAttackSequence(source, target);
+        }
+        
+        function isGameFinished() { return new Set(territories.map(t => t.owner).filter(o => o > 0)).size <= 1; }
+        
+        function handleFortify(source, dest) {
+            if (source.owner !== 1 || dest.owner !== 1 || source.id === dest.id || hasFortified) return;
+            if (!isPathConnected(source.id, dest.id, 1)) {
+                showNotification("Keine durchgehende Verbindung!", true);
+                fortifySource = null; updatePlanetVisuals(); return;
+            }
+            const modal = document.getElementById('move-troops-modal');
+            const slider = document.getElementById('move-ships-slider');
+            const sliderValue = document.getElementById('slider-value');
+            slider.max = source.troops - 1; slider.value = 1; sliderValue.textContent = 1;
+            slider.oninput = () => { sliderValue.textContent = slider.value; };
+            modal.classList.remove('hidden');
+            document.getElementById('confirm-move-btn').onclick = () => {
+                const amount = parseInt(slider.value, 10);
+                if (amount > 0 && amount < source.troops) {
+                    logEvent(`${getPlayerNameById(1)} verschiebt ${amount} Raumschiff(e) von ${source.name} nach ${dest.name}.`);
+                    source.troops -= amount; dest.troops += amount; hasFortified = true;
+                    playSound('fortify'); 
+                    modal.classList.add('hidden'); fortifySource = null; updateStatus();
+                }
+            };
+            document.getElementById('cancel-move-btn').onclick = () => { modal.classList.add('hidden'); fortifySource = null; updatePlanetVisuals(); };
+        }
+
+        function isPathConnected(sourceId, destId, playerId) {
+            let q = [sourceId], visited = new Set([sourceId]);
+            while (q.length > 0) {
+                const currentId = q.shift();
+                if (currentId === destId) return true;
+                const currentTerritory = territories.find(t => t.id === currentId);
+                currentTerritory?.connections.forEach(nId => {
+                    const neighbor = territories.find(t => t.id === nId);
+                    if (neighbor && !visited.has(nId) && neighbor.owner === playerId) { visited.add(nId); q.push(nId); }
+                });
+            }
+            return false;
+        }
+
+        async function endTurn() {
+            if (gameState !== 'GAME_OVER') { 
+                 turnCounter++;
+                 if (EVENTS_CONFIG.enabled && Math.random() < EVENTS_CONFIG.chancePerTurn) {
+                    await triggerRandomEvent(); 
+                 }
+            } else {
+                 return;
+            }
+
+            if (currentPlayerId === 1 && !isDemoMode && !playerDefeatedNotified && gameState === 'ATTACK') {
+                gameState = 'FORTIFY';
+                updateStatus();
+                return;
+            }
+            
+            selectedTerritory = null; fortifySource = null;
+            
+            while(true) {
+                if (checkGameOver()) return;
+                
+                let nextPlayerId = currentPlayerId;
+                let i = 0;
+                do { 
+                    nextPlayerId = (nextPlayerId % NUM_PLAYERS) + 1; 
+                    i++; 
+                } while (!territories.some(t => t.owner === nextPlayerId) && i < (NUM_PLAYERS * 2));
+                
+                currentPlayerId = nextPlayerId;
+                
+                if (checkGameOver()) return;
+
+                if (currentPlayerId === 1 && !isDemoMode) {
+                    if (playerDefeatedNotified) {
+                        await delay(100);
+                        continue;
+                    } else {
+                        startPlayerTurn();
+                        return; 
+                    }
+                } else {
+                    gameState = 'AI_TURN';
+                    updateStatus();
+                    await delay(500); 
+                    const aiPlayer = aiPlayers.find(p => p.id === currentPlayerId);
+                    if (aiPlayer) {
+                        await runAITurn(aiPlayer);
+                    }
+                }
+            }
+        }
+        
+        async function runAITurn(aiPlayer) {
+            if (gameState === 'GAME_OVER' || !territories.some(t => t.owner === aiPlayer.id)) return;
+            const { id, aggressionLevel } = aiPlayer;
+            logEvent(`${getPlayerNameById(id)} ist am Zug.`);
+            runAIReinforcePhase({ id, aggressionLevel }); await delay(500); if (checkGameOver()) return;
+            await runAIAttackPhase({ id, aggressionLevel }); if (checkGameOver()) return;
+            await runAIFortifyPhase({ id, aggressionLevel }); await delay(500);
+        }
+
+        function runAIReinforcePhase({ id, aggressionLevel }) {
+            let aiTerritories = territories.filter(t => t.owner === id);
+            if (aiTerritories.length === 0) return;
+
+            let aiReinforcements = Math.max(3, Math.floor(aiTerritories.length / 3));
+
+// --- Kumulative KI-Boni/Mali ---
+let aiBonus = 0;
+switch (difficulty) {
+    case 'very_easy':
+        aiBonus -= 1; // Malus für "Sehr Leicht"
+        // fallthrough, um den Malus von "Leicht" zu addieren
+    case 'easy':
+        aiBonus -= 1; // Malus für "Leicht" (und "Sehr Leicht")
+        break;
+    case 'normal':
+        // Kein Bonus/Malus für "Normal"
+        break;
+    case 'hard':
+        aiBonus += 2; // Bonus für die KI auf "Schwer"
+        break;
+}
+
+if (aiBonus !== 0) {
+    aiReinforcements += aiBonus;
+    // Sicherstellen, dass die KI immer mindestens 1 Schiff erhält
+    aiReinforcements = Math.max(1, aiReinforcements); 
+}
+
+            if (aiTerritories.length >= GAME_RULES.planetBonusThreshold) {
+                aiReinforcements += GAME_RULES.planetBonusAmount;
+                logEvent(`${getPlayerNameById(id)} erhält einen Bonus von ${GAME_RULES.planetBonusAmount} Schiffen!`);
+            }
+
+            const borderTerritories = aiTerritories.filter(t => t.connections.some(cId => territories.find(t2=>t2.id===cId)?.owner !== id));
+            let targetPlanet = null;
+
+            if (borderTerritories.length > 0) {
+                const scoredBorders = borderTerritories.map(planet => {
+                    const threatLevel = planet.connections.reduce((sum, cId) => {
+                        const neighbor = territories.find(t => t.id === cId);
+                        return (neighbor && neighbor.owner !== id) ? sum + neighbor.troops : sum;
+                    }, 0);
+                    const strategicValue = calculateStrategicValue(planet);
+                    const score = (threatLevel * 10) + strategicValue;
+                    return { planet, score };
+                }).sort((a, b) => b.score - a.score);
+                targetPlanet = scoredBorders[0].planet;
+            } else if (aiTerritories.length > 0) {
+                targetPlanet = aiTerritories[0];
+            }
+
+            if (targetPlanet) {
+                logEvent(`${getPlayerNameById(id)} verstärkt ${targetPlanet.name} mit ${aiReinforcements} Raumschiff(en).`);
+                targetPlanet.troops += aiReinforcements;
+                playSound('reinforce');
+                updateSinglePlanetVisual(targetPlanet); 
+            }
+        }
+        
+        async function runAIAttackPhase({ id, aggressionLevel }) {
+            if (checkGameOver()) return;
+            
+            let attackThreshold = KI_CONFIG.attackThresholdConfig.baseValue - (aggressionLevel * KI_CONFIG.attackThresholdConfig.aggressionMultiplier);
+            const lateGameConfig = KI_CONFIG.lateGameAggression;
+             if (turnCounter > lateGameConfig.startTurn) {
+                attackThreshold -= (turnCounter - lateGameConfig.startTurn) * lateGameConfig.increasePerTurn;
+            }
+
+            const maxAttacks = KI_CONFIG.maxAttacksPerDifficulty[difficulty] || 4;
+            let attacksMade = 0;
+
+            while(attacksMade < maxAttacks && !checkGameOver()){
+                let possibleAttacks = [];
+                const myTerritories = territories.filter(t => t.owner === id && t.troops > 1);
+
+                for(const source of myTerritories) {
+                    for(const targetId of source.connections) {
+                        const target = territories.find(t => t.id === targetId);
+                        if(target && target.owner !== id) { 
+                            possibleAttacks.push(calculateAttackScore(source, target, id, aggressionLevel));
+                        }
+                    }
+                }
+
+                if (possibleAttacks.length === 0) break;
+                
+                possibleAttacks.sort((a, b) => b.score - a.score);
+                const bestAttack = possibleAttacks[0];
+
+                if (bestAttack && bestAttack.score > attackThreshold) {
+                    await handleAttack(bestAttack.source, bestAttack.target);
+                    attacksMade++;
+                    await delay(600); 
+                } else {
+                    break; 
+                }
+            }
+        }
+
+        async function runAIFortifyPhase({ id, aggressionLevel }) {
+            if(checkGameOver()) return;
+            const maxMoves = KI_CONFIG.fortifyMovesPerDifficulty[difficulty] || 1;
+
+            for (let i = 0; i < maxMoves; i++) {
+                const myTerritories = territories.filter(t => t.owner === id);
+                if (myTerritories.length <= 1) continue;
+
+                const borderTerritories = [];
+                const inlandTerritories = [];
+                myTerritories.forEach(t => {
+                    const isBorder = t.connections.some(cId => territories.find(t2 => t2.id === cId)?.owner !== id);
+                    if (isBorder) borderTerritories.push(t);
+                    else if (t.troops > 1) inlandTerritories.push(t);
+                });
+
+                if (inlandTerritories.length === 0 || borderTerritories.length === 0) continue;
+
+                const scoredBorders = borderTerritories.map(planet => {
+                    const threatLevel = planet.connections.reduce((sum, cId) => {
+                        const neighbor = territories.find(t => t.id === cId);
+                        return (neighbor && neighbor.owner !== id) ? sum + neighbor.troops : sum;
+                    }, 0);
+                    const strategicValue = calculateStrategicValue(planet);
+                    const deficit = (threatLevel + (strategicValue / 10)) - planet.troops;
+                    return { planet, score: deficit };
+                }).sort((a, b) => b.score - a.score);
+
+                let targetPlanet = scoredBorders.length > 0 ? scoredBorders[0].planet : null;
+                
+                if (aggressionLevel > 7 && Math.random() > 0.4) {
+                    targetPlanet = borderTerritories.sort((a,b) => b.troops - a.troops)[0] || targetPlanet;
+                }
+
+                if (!targetPlanet) continue;
+
+                const bestSource = inlandTerritories
+                    .filter(inland => isPathConnected(inland.id, targetPlanet.id, id))
+                    .sort((a, b) => b.troops - a.troops)[0];
+
+                if (bestSource && bestSource.id !== targetPlanet.id) {
+                    const troopsToMove = bestSource.troops - 1;
+                    if (troopsToMove > 0) {
+                        logEvent(`${getPlayerNameById(id)} verschiebt ${troopsToMove} Raumschiff(e) von ${bestSource.name} nach ${targetPlanet.name}.`);
+                        bestSource.troops -= troopsToMove;
+                        targetPlanet.troops += troopsToMove;
+                        playSound('fortify');
+                        await delay(200);
+                    }
+                }
+            }
+        }
+
+        async function animateAttackerLoss(planet) {
+            playSound('planet_lose');
+            const meshGroup = planetMeshes.find(m => m.userData.id === planet.id);
+            if (!meshGroup) return;
+
+            const planetMesh = meshGroup.children.find(c => c.geometry.type === 'SphereGeometry');
+            if (planetMesh) planetMesh.material.emissive.setHex(0xff0000);
+
+            await delay(400); 
+
+            if (planetMesh) planetMesh.material.emissive.setHex(0x000000);
+        }
+
+        function calculateStrategicValue(planet) {
+            let value = 0;
+            value += planet.connections.length * 3;
+            return value;
+        }
+
+        function calculateAttackScore(source, target, playerId, aggressionLevel) {
+            const winChance = source.troops / (source.troops + target.troops + 2);
+            let score = winChance * 20;
+
+            score += calculateStrategicValue(target);
+
+            const currentBorders = countBorders(playerId, territories);
+            
+            const hypotheticalTerritories = JSON.parse(JSON.stringify(territories));
+            const hypoSource = hypotheticalTerritories.find(t => t.id === source.id);
+            const hypoTarget = hypotheticalTerritories.find(t => t.id === target.id);
+            hypoTarget.owner = playerId;
+            const troopsLeftOnNewPlanet = hypoSource.troops -1;
+            hypoTarget.troops = troopsLeftOnNewPlanet;
+            hypoSource.troops = 1;
+
+            const newBorders = countBorders(playerId, hypotheticalTerritories);
+            const borderChangeScore = (currentBorders - newBorders) * 5;
+            score += borderChangeScore;
+            
+            const threatToNewPlanet = hypoTarget.connections.reduce((sum, cId) => {
+                const neighbor = hypotheticalTerritories.find(t => t.id === cId);
+                return (neighbor && neighbor.owner !== playerId) ? sum + neighbor.troops : sum;
+            }, 0);
+
+            const vulnerability = threatToNewPlanet - troopsLeftOnNewPlanet;
+            if (vulnerability > 0) {
+                score -= vulnerability * 10;
+            }
+
+            score *= (1 + (aggressionLevel - 5) * 0.1);
+
+            return { score, source, target };
+        }
+        
+        function countBorders(playerId, currentTerritories) {
+            let borderCount = 0;
+            const myTerritories = currentTerritories.filter(t => t.owner === playerId);
+            if(myTerritories.length === 0) return 0;
+
+            const myTerritoryIds = new Set(myTerritories.map(t => t.id));
+            myTerritories.forEach(t => { t.connections.forEach(cId => { 
+                const neighbor = currentTerritories.find(n => n.id === cId);
+                if (neighbor && !myTerritoryIds.has(neighbor.id)) borderCount++; 
+            }); });
+            return borderCount;
+        }
+
+        function checkGameOver() {
+            if (gameState === 'GAME_OVER') return true;
+            const activePlayers = new Set(territories.map(t => t.owner).filter(o => o > 0));
+            if (activePlayers.size <= 1) { showGameOver(activePlayers.values().next().value || 0); return true; }
+            return false;
+        }
+
+        // =======================================================
+        // ZUFALLSEREIGNISSE
+        // =======================================================
+
+        async function triggerRandomEvent() {
+            const weights = EVENTS_CONFIG.weights;
+            const weightedEvents = [
+                { event: eventSolarStorm, weight: weights.solarStorm },
+                { event: eventMeteorShower, weight: weights.meteorShower },
+                { event: eventAsteroidImpact, weight: weights.asteroidImpact },
+                { event: eventSupernova, weight: weights.supernova }, // <-- NEU
+                { event: eventPassingComet, weight: weights.passingComet },
+                { event: eventAncientProbe, weight: weights.ancientProbe },
+                { event: eventMysteriousSignal, weight: weights.mysteriousSignal }
+            ];
+
+            const totalWeight = weightedEvents.reduce((sum, item) => sum + item.weight, 0);
+            if (totalWeight === 0) return; // Nichts tun, wenn alle Gewichte 0 sind
+
+            let randomRoll = Math.random() * totalWeight;
+            let chosenEvent = weightedEvents[weightedEvents.length - 1].event; // Fallback
+
+            for (const item of weightedEvents) {
+                if (randomRoll < item.weight) {
+                    chosenEvent = item.event;
+                    break;
+                }
+                randomRoll -= item.weight;
+            }
+            
+            await chosenEvent();
+        }
+
+        async function eventSolarStorm() {
+            logEvent("SONNENSTURM! Die Hyperraum-Routen kollabieren! Alle Verbindungen werden neu geordnet.");
+            showNotification("SONNENSTURM!", true);
+            playSound('solar_storm');
+
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(255, 255, 100, 0)';
+            overlay.style.zIndex = '100';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.transition = 'background-color 0.5s ease-out';
+            document.body.appendChild(overlay);
+
+            await delay(50);
+            overlay.style.backgroundColor = 'rgba(255, 255, 100, 0.8)';
+            await delay(200);
+            overlay.style.backgroundColor = 'rgba(255, 255, 100, 0)';
+            await delay(500);
+            document.body.removeChild(overlay);
+
+            territories.forEach(t => t.connections = []);
+
+            territories.forEach(t1 => {
+                let sortedByDist = territories.map(t2 => ({t2, dist: t1.position.distanceTo(t2.position)})).sort((a,b) => a.dist - b.dist);
+                for(let i=1; i < 4; i++){
+                    if (sortedByDist.length > i) {
+                        let t2 = sortedByDist[i].t2;
+                        if (t1.id !== t2.id && !t1.connections.includes(t2.id)) { 
+                            t1.connections.push(t2.id); 
+                            t2.connections.push(t1.id); 
+                        }
+                    }
+                }
+            });
+
+            updateConnectionLines();
+            logEvent("Die galaktischen Routen haben sich stabilisiert.");
+        }
+
+        async function eventMeteorShower() {
+            logEvent("METEORITENSCHAUER! Mehrere Planeten werden getroffen!");
+            showNotification("METEORITENSCHAUER!", true);
+            playSound('meteor_shower');
+            
+            if (territories.length === 0) return;
+
+            const startPlanet = territories[Math.floor(Math.random() * territories.length)];
+            let targets = [startPlanet];
+            let connections = [...startPlanet.connections];
+
+            for(let i=0; i < EVENTS_CONFIG.maxMeteorTargets - 1 && connections.length > 0; i++) {
+                const targetId = connections.splice(Math.floor(Math.random() * connections.length), 1)[0];
+                const neighbor = territories.find(t => t.id === targetId);
+                if (neighbor) targets.push(neighbor);
+            }
+
+            for (const planet of targets) {
+                 const losses = Math.min(planet.troops -1, Math.floor(planet.troops * EVENTS_CONFIG.meteorDamagePercent));
+                 if (losses > 0) {
+                     planet.troops -= losses;
+                     logEvent(`${planet.name} verliert ${losses} Schiffe durch den Meteoritenschauer!`);
+                     
+                     for (let i=0; i<3; i++) {
+                        const from = new THREE.Vector3(planet.position.x + (Math.random()-0.5)*30, planet.position.y + (Math.random()-0.5)*30, planet.position.z - 30);
+                        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshLambertMaterial({color: 0x8B4513}));
+                        rock.position.copy(from);
+                        scene.add(rock);
+                        animations.push({ mesh: rock, startPos: from, endPos: planet.position, progress: 0, onComplete: () => { scene.remove(rock); createImpactEffect(planet.position, planet.radius); } });
+                        await delay(100);
+                     }
+                 }
+                 updateSinglePlanetVisual(planet);
+            }
+             await delay(1000);
+        }
+
+        async function eventAsteroidImpact() {
+            logEvent("ASTEROIDENEINSCHLAG! Ein Planet wurde ausgelöscht!");
+            showNotification("ASTEROIDENEINSCHLAG!", true);
+            playSound('asteroid_impact');
+
+            if (territories.length === 0) return;
+
+            const planetIndex = Math.floor(Math.random() * territories.length);
+            const planetToDestroy = territories[planetIndex];
+            logEvent(`Der Planet ${planetToDestroy.name} wurde von einem massiven Asteroiden getroffen und vernichtet!`);
+
+            const from = new THREE.Vector3(planetToDestroy.position.x + (Math.random()-0.5)*40, planetToDestroy.position.y + 20, planetToDestroy.position.z - 40);
+            const asteroid = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 1), new THREE.MeshLambertMaterial({color: 0x5d4a44}));
+            asteroid.position.copy(from);
+            scene.add(asteroid);
+
+            await new Promise(resolve => {
+                 animations.push({ 
+                    mesh: asteroid, 
+                    startPos: from, 
+                    endPos: planetToDestroy.position, 
+                    progress: 0, 
+                    onComplete: () => { 
+                        scene.remove(asteroid);
+                        explode(planetToDestroy.position, 300);
+                        playSound('game_over');
+                        resolve();
+                    } 
+                });
+            });
+            
+            const planetId = planetToDestroy.id;
+            
+            territories.splice(planetIndex, 1);
+            
+            const meshIndex = planetMeshes.findIndex(m => m.userData.id === planetId);
+            if (meshIndex !== -1) {
+                scene.remove(planetMeshes[meshIndex]);
+                planetMeshes.splice(meshIndex, 1);
+            }
+
+            territories.forEach(t => {
+                const connIndex = t.connections.indexOf(planetId);
+                if (connIndex > -1) {
+                    t.connections.splice(connIndex, 1);
+                }
+            });
+
+            updateConnectionLines();
+            updateStatus();
+            checkGameOver();
+        }
+
+        // NEUE Funktion für das Supernova-Ereignis
+        async function eventSupernova() {
+            logEvent("SUPERNOVA! Ein Stern ist explodiert und vernichtet einen ganzen Sektor!");
+            showNotification("SUPERNOVA!", true);
+            playSound('supernova_event');
+
+            if (territories.length < 3) return; 
+
+            const centerPlanetIndex = Math.floor(Math.random() * territories.length);
+            const centerPlanet = territories[centerPlanetIndex];
+            
+            let sortedByDist = territories
+                .filter(t => t.id !== centerPlanet.id)
+                .map(t2 => ({t2, dist: centerPlanet.position.distanceTo(t2.position)}))
+                .sort((a,b) => a.dist - b.dist);
+
+            const planetsToDestroy = [centerPlanet];
+            const numToDestroy = Math.floor(Math.random() * 2) + 2; // Zerstört 2 oder 3 Planeten
+
+            for(let i = 0; i < numToDestroy - 1 && i < sortedByDist.length; i++) {
+                planetsToDestroy.push(sortedByDist[i].t2);
+            }
+
+            for (const planetToDestroy of planetsToDestroy) {
+                logEvent(`Der Planet ${planetToDestroy.name} wurde von der Supernova verschlungen!`);
+                
+                explode(planetToDestroy.position, 400); 
+                playSound('game_over');
+
+                const planetId = planetToDestroy.id;
+
+                const territoryIndex = territories.findIndex(t => t.id === planetId);
+                if (territoryIndex > -1) {
+                    territories.splice(territoryIndex, 1);
+                }
+
+                const meshIndex = planetMeshes.findIndex(m => m.userData.id === planetId);
+                if (meshIndex !== -1) {
+                    scene.remove(planetMeshes[meshIndex]);
+                    planetMeshes.splice(meshIndex, 1);
+                }
+
+                territories.forEach(t => {
+                    const connIndex = t.connections.indexOf(planetId);
+                    if (connIndex > -1) {
+                        t.connections.splice(connIndex, 1);
+                    }
+                });
+                await delay(200);
+            }
+
+            updateConnectionLines();
+            updateStatus();
+            checkGameOver();
+        }
+
+
+        async function eventPassingComet() {
+            logEvent("Ein Komet zieht durch die Galaxie! Ein seltenes und beeindruckendes Schauspiel.");
+            showNotification("Komet gesichtet!");
+            playSound('passing_comet');
+
+            const startY = (Math.random() - 0.5) * 60;
+            const endY = (Math.random() - 0.5) * 60;
+            const startPos = new THREE.Vector3(-60, startY, (Math.random() - 0.5) * 20);
+            const endPos = new THREE.Vector3(60, endY, (Math.random() - 0.5) * 20);
+
+            const cometHead = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), new THREE.MeshBasicMaterial({ color: 0x87ceeb, emissive: 0x87ceeb, emissiveIntensity: 2 }));
+            const tailGeometry = new THREE.ConeGeometry(0.7, 8, 16);
+            const tailMaterial = new THREE.MeshBasicMaterial({ color: 0x87ceeb, transparent: true, opacity: 0.3 });
+            const cometTail = new THREE.Mesh(tailGeometry, tailMaterial);
+            cometTail.position.z = -4;
+            cometTail.rotation.x = Math.PI / 2;
+
+            const comet = new THREE.Group();
+            comet.add(cometHead);
+            comet.add(cometTail);
+            comet.lookAt(endPos);
+            
+            scene.add(comet);
+            
+            animations.push({
+                mesh: comet, startPos: startPos, endPos: endPos, progress: 0,
+                update: function() {
+                    this.progress += 0.005;
+                    this.mesh.position.lerpVectors(this.startPos, this.endPos, this.progress);
+                },
+                onComplete: () => {
+                    scene.remove(comet);
+                    logEvent("Der Komet hat das System verlassen.");
+                }
+            });
+        }
+
+        async function eventAncientProbe() {
+            logEvent("Eine antike Sonde unbekannter Herkunft wurde entdeckt!");
+            showNotification("Unbekannte Sonde!");
+            playSound('ancient_probe');
+
+            if (territories.length === 0) return;
+            const targetPlanet = territories[Math.floor(Math.random() * territories.length)];
+            
+            const startPos = new THREE.Vector3((Math.random() - 0.5) * 80, 30, (Math.random() - 0.5) * 80);
+            const scanPos = targetPlanet.position.clone().add(new THREE.Vector3(0, targetPlanet.radius + 2, 0));
+            const endPos = new THREE.Vector3((Math.random() - 0.5) * 80, -30, (Math.random() - 0.5) * 80);
+
+            const probe = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), new THREE.MeshStandardMaterial({ color: 0x7f8c8d, metalness: 0.8, roughness: 0.2 }));
+            probe.position.copy(startPos);
+            scene.add(probe);
+
+            await new Promise(resolve => {
+                animations.push({ mesh: probe, startPos, endPos: scanPos, progress: 0, onComplete: resolve });
+            });
+
+            logEvent(`Die Sonde scannt ${targetPlanet.name}...`);
+            const planetMesh = planetMeshes.find(m => m.userData.id === targetPlanet.id)?.children.find(c => c.geometry.type === 'SphereGeometry');
+            if (planetMesh) {
+                const originalEmissive = planetMesh.material.emissive.getHex();
+                planetMesh.material.emissive.setHex(0x00ffff);
+                await delay(1500);
+                planetMesh.material.emissive.setHex(originalEmissive);
+            }
+            
+            logEvent("Der Scan ist beendet. Die Sonde zieht weiter.");
+
+            await new Promise(resolve => {
+                animations.push({ mesh: probe, startPos: scanPos, endPos, progress: 0, onComplete: () => { scene.remove(probe); resolve(); } });
+            });
+        }
+
+        async function eventMysteriousSignal() {
+            if (territories.length === 0) return;
+            const randomPlanet = territories[Math.floor(Math.random() * territories.length)];
+            logEvent(`Ein mysteriöses, sich wiederholendes Signal wurde von den Sensoren bei ${randomPlanet.name} aufgefangen, bevor es plötzlich verstummte.`);
+            showNotification("Mysteriöses Signal!");
+            playSound('mysterious_signal');
+        }
+
+        function getPlayerNameById(id) {
+            if (id === 1 && !isDemoMode) return humanPlayerName;
+            return aiPlayers.find(p => p.id === id)?.name || `Spieler ${id}`;
+        }
+
+        function getFormattedTimestamp() {
+            if (!gameStartTime) return "00:00";
+            const elapsedMs = Date.now() - gameStartTime;
+            const totalSeconds = Math.floor(elapsedMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${minutes}:${seconds}`;
+        }
+
+        function logEvent(message) {
+            const timestamp = getFormattedTimestamp();
+            gameLog.unshift({ timestamp, message });
+            if(gameLog.length > 100) gameLog.pop();
+            updateLogbookDisplay();
+        }
+        
+        function hexToRgba(hex, alpha = 1) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})` : 'rgba(0,0,0,0.5)';
+        }
+
+        function updateSinglePlanetVisual(planetData) {
+            const meshGroup = planetMeshes.find(m => m.userData.id === planetData.id);
+            if (!meshGroup) return;
+
+            const textSprite = meshGroup.children.find(c => c.userData.type === 'troop_sprite');
+            if (textSprite) {
+                const context = textSprite.material.map.image.getContext('2d');
+                context.clearRect(0, 0, 128, 128);
+                
+                const playerColor = PLAYER_COLORS[planetData.owner] || '#808080';
+                context.fillStyle = hexToRgba(playerColor, 0.7);
+                context.beginPath(); 
+                context.arc(64, 64, 40, 0, Math.PI * 2); 
+                context.fill();
+                
+                context.font = "Bold 50px Roboto Condensed";
+                context.fillStyle = "rgba(255,255,255,1)";
+                context.textAlign = "center";
+                context.textBaseline = "middle";
+                context.fillText(planetData.troops, 64, 64);
+                textSprite.material.map.needsUpdate = true;
+            }
+        }
+        
+        function createParticleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.4, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const particleTexture = createParticleTexture();
+
+        function createImpactEffect(position, planetRadius) {
+            playSound('impact');
+            const effectScale = planetRadius * 0.3;
+            const particleCount = 50;
+            const particlesGeometry = new THREE.BufferGeometry();
+            const posArray = new Float32Array(particleCount * 3);
+            const velocities = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                posArray[i * 3 + 0] = position.x;
+                posArray[i * 3 + 1] = position.y;
+                posArray[i * 3 + 2] = position.z;
+
+                velocities.push(new THREE.Vector3((Math.random() - 0.5) * effectScale, (Math.random() - 0.5) * effectScale, (Math.random() - 0.5) * effectScale));
+            }
+
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: Math.max(0.2, effectScale), 
+                map: particleTexture, color: 0xAAAAAA, blending: THREE.NormalBlending, transparent: true, depthWrite: false
+            });
+
+            const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
+            scene.add(particleSystem);
+
+            activeEffects.push({ system: particleSystem, velocities: velocities, lifetime: 1.0 });
+        }
+
+        function updateLogbookDisplay() {
+            const content = document.getElementById('logbook-content');
+            if(content) {
+                 content.innerHTML = gameLog.map(entry => `<p><span class="text-gray-400">[${entry.timestamp}]</span> ${entry.message}</p>`).join('');
+            }
+        }
+
+        function showGameOver(winnerId) {
+            gameState = 'GAME_OVER';
+            const winnerName = getPlayerNameById(winnerId);
+            logEvent(`${winnerName} hat die Galaxie erobert und das Spiel gewonnen!`);
+            document.getElementById('controls').style.display = 'none';
+            const modal = document.getElementById('game-over-modal');
+            const title = document.getElementById('game-over-title');
+            const text = document.getElementById('game-over-text');
+            
+            if (winnerId === 1 && !isDemoMode) {
+                title.textContent = "SIEG!"; title.style.color = PLAYER_COLORS[1];
+                text.textContent = `${winnerName}, du hast die Galaxie erobert! Gut gemacht!`;
+                playSound('game_win');
+                createFireworks(30);
+            } else {
+                const ai = aiPlayers.find(p => p.id === winnerId);
+                title.textContent = "SPIEL BEENDET"; title.style.color = ai ? PLAYER_COLORS[ai.id] : '#FFFFFF';
+                text.textContent = `${winnerName} hat die Galaxie erobert.`;
+                playSound('game_over');
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function showPlayerDefeatModal() {
+            const modal = document.getElementById('player-defeat-modal');
+            const defeatText = modal.querySelector('p');
+            defeatText.textContent = `${humanPlayerName}, deine letzte Flotte wurde zerstört. Du kannst den KIs nun beim Kampf um die Galaxie zusehen.`
+            modal.classList.remove('hidden');
+            playSound('game_over');
+            const overlay = document.getElementById('defeat-overlay');
+            overlay.style.display = 'block'; overlay.className = 'animate-red-flash';
+            setTimeout(() => { overlay.className = ''; overlay.style.display = 'none'; }, 2000);
+        }
+
+        function createFireworks(count) {
+            for(let i=0; i<count; i++) { setTimeout(() => { const from = { x: (Math.random() - 0.5) * 50, y: -20, z: (Math.random() - 0.5) * 50 }; const to = { x: from.x, y: Math.random() * 20 + 10, z: from.z }; const rocket = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); rocket.position.set(from.x, from.y, from.z); scene.add(rocket); animations.push({ mesh: rocket, startPos: new THREE.Vector3(from.x, from.y, from.z), endPos: new THREE.Vector3(to.x, to.y, to.z), progress: 0, onComplete: () => { scene.remove(rocket); explode(to, 100); } }); }, Math.random() * 1000); }
+        }
+
+        function explode(position, count) {
+             const explosionColor = new THREE.Color().setHSL(Math.random(), 1, 0.7);
+             for(let i=0; i<count; i++){ const particle = { position: position, velocity: new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize().multiplyScalar(Math.random() * 0.5), alpha: 1, mesh: new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({color: explosionColor, transparent: true})) }; particle.mesh.position.copy(particle.position); fireworkParticles.push(particle); scene.add(particle.mesh); }
+        }
+
+        function setupUI() {
+            const statsContainer = document.getElementById('players-stats');
+            statsContainer.innerHTML = '';
+            for (let i = 1; i <= NUM_PLAYERS; i++) {
+                const playerDiv = document.createElement('div');
+                playerDiv.id = `player-stat-${i}`;
+                playerDiv.className = 'transition-opacity duration-500';
+                let name = getPlayerNameById(i);
+                let desc = (i===1 && !isDemoMode) ? "Der menschliche Spieler" : (aiPlayers.find(p => p.id === i)?.description || "");
+                let agg = (aiPlayers.find(p => p.id === i)) ? `<span class="text-xs opacity-75"> ${aiPlayers.find(p => p.id === i).aggressionLevel}</span>` : "";
+                playerDiv.innerHTML = `<p style="color: ${PLAYER_COLORS[i]}; font-weight: bold;" title="${desc}">${name} ${agg}</p><p class="text-xs"><span id="player${i}-territories">0</span> Planeten | <span id="player${i}-troops">0</span> Raumschiffe</p>`;
+                statsContainer.appendChild(playerDiv);
+            }
+        }
+        
+        function updateStatus() {
+            if (gameState === 'GAME_OVER') return;
+            if (!isDemoMode && !playerDefeatedNotified && territories.length > 0 && !territories.some(t => t.owner === 1) && gameState !== 'INIT' && gameState !== 'SETUP') { 
+                logEvent(`${getPlayerNameById(1)} wurde besiegt!`);
+                showPlayerDefeatModal(); 
+                playerDefeatedNotified = true; 
+            }
+            const statusEl = document.getElementById('status-text');
+            const btn = document.getElementById('end-turn-btn');
+            if (currentPlayerId === 1 && !playerDefeatedNotified && !isDemoMode) {
+                 switch(gameState) {
+                    case 'REINFORCE': statusEl.textContent = `Platziere deine Verstärkung. Übrig: ${reinforcements} Raumschiffe.`; btn.style.display = 'none'; break;
+                    case 'ATTACK': statusEl.textContent = 'Angriffsphase: Wähle einen Planeten oder beende den Zug.'; btn.textContent = 'Befestigungsphase'; btn.style.display = 'inline-block'; break;
+                    case 'FORTIFY': statusEl.textContent = hasFortified ? 'Du hast Raumschiffe verschoben.' : 'Befestigungsphase: Raumschiffe verschieben (optional).'; btn.textContent = 'Zug beenden'; break;
+                }
+            } else {
+                 statusEl.textContent = `${getPlayerNameById(currentPlayerId)} ist am Zug...`;
+                 btn.style.display = 'none';
+            }
+            updatePlanetVisuals();
+            for (let i = 1; i <= NUM_PLAYERS; i++) {
+                const pTerritories = territories.filter(t => t.owner === i);
+                const terrCountEl = document.getElementById(`player${i}-territories`);
+                const troopCountEl = document.getElementById(`player${i}-troops`);
+                const playerStatDiv = document.getElementById(`player-stat-${i}`);
+                if(terrCountEl && troopCountEl) {
+                    terrCountEl.textContent = pTerritories.length;
+                    troopCountEl.textContent = pTerritories.reduce((sum, t) => sum + t.troops, 0);
+                    if (playerStatDiv) {
+                        const isEliminated = pTerritories.length === 0 && gameState !== 'INIT' && gameState !== 'SETUP';
+                        const nameEl = playerStatDiv.querySelector('p');
+                        if (nameEl) {
+                           let name = getPlayerNameById(i);
+                           let agg = (aiPlayers.find(p => p.id === i)) ? `<span class="text-xs opacity-75"> ${aiPlayers.find(p => p.id === i).aggressionLevel}</span>` : "";
+                           nameEl.innerHTML = `${name} ${agg}`;
+                        }
+
+                        playerStatDiv.style.opacity = isEliminated ? '0.5' : '1';
+                        playerStatDiv.style.textDecoration = isEliminated ? 'line-through' : 'none';
+                    }
+                }
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!renderer) return;
+
+            planetMeshes.forEach(planetGroup => {
+                const planetData = territories.find(p => p.id === planetGroup.userData.id);
+                if (planetData && planetData.moons) {
+                    planetGroup.children.forEach(child => {
+                        if (child.userData.speed) {
+                             child.userData.angle += child.userData.speed;
+                             child.position.x = Math.cos(child.userData.angle) * child.userData.distance;
+                             child.position.z = Math.sin(child.userData.angle) * child.userData.distance;
+                        }
+                    });
+                }
+            });
+
+            animations = animations.filter(anim => {
+                if (anim.update) {
+                    anim.update();
+                } else {
+                    anim.progress += 0.02;
+                }
+
+                if(anim.progress >= 1) { 
+                    if(anim.onComplete) anim.onComplete(); 
+                    return false; 
+                }
+                
+                if (!anim.update) {
+                    anim.mesh.position.lerpVectors(anim.startPos, anim.endPos, anim.progress);
+                }
+                return true;
+            });
+
+            fireworkParticles = fireworkParticles.filter(p => {
+                p.velocity.y -= 0.005; p.mesh.position.add(p.velocity); p.alpha -= 0.01;
+                p.mesh.material.opacity = p.alpha;
+                if(p.alpha <= 0) { scene.remove(p.mesh); return false; }
+                return true;
+            });
+
+            activeEffects.forEach((effect, index) => {
+                effect.lifetime -= 0.02; 
+                const positions = effect.system.geometry.attributes.position.array;
+                
+                for (let i = 0; i < effect.velocities.length; i++) {
+                    positions[i * 3 + 0] += effect.velocities[i].x;
+                    positions[i * 3 + 1] += effect.velocities[i].y;
+                    positions[i * 3 + 2] += effect.velocities[i].z;
+                }
+                
+                effect.system.material.opacity = effect.lifetime;
+                effect.system.geometry.attributes.position.needsUpdate = true;
+
+                if (effect.lifetime <= 0) {
+                    scene.remove(effect.system);
+                    activeEffects.splice(index, 1);
+                }
+            });
+
+            controls.update(); 
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() { if (!camera || !renderer) return; camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        
+        function onMouseMove(event) {
+            if (!raycaster || !mouse || gameState === 'GAME_OVER') return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(planetMeshes, true);
+            let intersectedPlanet = null;
+            if (intersects.length > 0 && !controls.state > 0) {
+                let obj = intersects[0].object;
+                while(obj.parent && obj.userData.type !== 'planet') { obj = obj.parent; }
+                if(obj.userData.type === 'planet') intersectedPlanet = territories.find(p => p.id === obj.userData.id);
+            }
+            if(hoveredTerritory !== intersectedPlanet) {
+                hoveredTerritory = intersectedPlanet;
+                updatePlanetVisuals();
+            }
+        }
+        
+         function onMouseClick(event) {
+            if (isActionInProgress) return;
+            if (controls.state > 0 || isDemoMode) return;
+            if (gameState === 'GAME_OVER' || currentPlayerId !== 1 || playerDefeatedNotified) return;
+
+
+            if (hoveredTerritory) {
+                const planetData = hoveredTerritory;
+                if (gameState === 'REINFORCE') {
+                    handleReinforce(planetData);
+                } else if (gameState === 'ATTACK') {
+                    if (planetData.owner === 1) {
+                        selectedTerritory = planetData;
+                    } else if (selectedTerritory) {
+                        handleAttack(selectedTerritory, planetData);
+                    }
+                } else if (gameState === 'FORTIFY') {
+                     if (planetData.owner !== 1) return;
+                     if (!fortifySource) {
+                         fortifySource = planetData;
+                     } else {
+                         handleFortify(fortifySource, planetData);
+                     }
+                }
+            } else {
+                selectedTerritory = null;
+                fortifySource = null;
+            }
+            updatePlanetVisuals();
+        }
+        
+        function setupMediaControls() {
+    const videoSelect = document.getElementById('video-select');
+    const musicSelect = document.getElementById('music-select');
+    const mediaOverlaySelect = document.getElementById('image-select'); // Die ID des Select-Elements bleibt
+    const soundSetSelect = document.getElementById('sound-set-select');
+    const videoEl = document.getElementById('background-video');
+    const musicEl = document.getElementById('background-music');
+    const imageOverlayEl = document.getElementById('overlay-image'); // Das Bild-Element
+    const videoOverlayEl = document.getElementById('overlay-video'); // Das Video-Element
+    const muteBtn = document.getElementById('mute-btn');
+    const volumeSlider = document.getElementById('volume-slider');
+    
+    // Listen mit bekannten Dateiendungen
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    const videoExtensions = ['.mp4', '.webm', '.ogv'];
+
+    // Funktion zum Anzeigen des richtigen Mediums
+    const displayMedia = (url) => {
+        // Zuerst alles ausblenden und Video anhalten
+        imageOverlayEl.style.display = 'none';
+        videoOverlayEl.style.display = 'none';
+        videoOverlayEl.pause();
+
+        if (!url) return; // Nichts tun, wenn "Keins" ausgewählt ist
+
+        const lowerCaseUrl = url.toLowerCase();
+
+        // Prüfen, ob es ein Video ist
+        if (videoExtensions.some(ext => lowerCaseUrl.endsWith(ext))) {
+            videoOverlayEl.src = url;
+            videoOverlayEl.style.display = 'block';
+            videoOverlayEl.play().catch(e => console.error("Vordergrund-Video Autoplay blockiert.", e));
+        } 
+        // Prüfen, ob es ein Bild ist
+        else if (imageExtensions.some(ext => lowerCaseUrl.endsWith(ext))) {
+            imageOverlayEl.src = url;
+            imageOverlayEl.style.display = 'block';
+        }
+    };
+
+    // Dropdowns füllen
+    videoSelect.innerHTML = videoPlaylist.map(v => `<option value="${v.url}">${v.name}</option>`).join('');
+    musicSelect.innerHTML = musicPlaylist.map(m => `<option value="${m.url}">${m.name}</option>`).join('');
+    mediaOverlaySelect.innerHTML = mediaOverlayPlaylist.map(v => `<option value="${v.url}">${v.name}</option>`).join('');
+    soundSetSelect.innerHTML = `<option value="1">Sound-Set 1</option><option value="2">Sound-Set 2</option><option value="3">Sound-Set 3</option><option value="4">Sound-Set 4</option>`;
+
+    // Event-Listener zuweisen
+    soundSetSelect.onchange = () => { currentSoundSetIndex = soundSetSelect.value; };
+    videoSelect.onchange = () => { videoEl.src = videoSelect.value; if(videoSelect.value) videoEl.play(); };
+    musicSelect.onchange = () => { musicEl.src = musicSelect.value; if(musicSelect.value) musicEl.play(); };
+    
+    // Der neue Listener für das Vordergrund-Medium
+    mediaOverlaySelect.onchange = () => {
+        displayMedia(mediaOverlaySelect.value);
+    };
+    
+    volumeSlider.oninput = () => { 
+        globalVolume = parseFloat(volumeSlider.value);
+        musicEl.volume = globalVolume;
+        isGloballyMuted = (globalVolume === 0);
+        musicEl.muted = isGloballyMuted;
+        muteBtn.textContent = isGloballyMuted ? '🔇' : '🔊'; 
+    };
+    
+    muteBtn.onclick = () => { 
+        isGloballyMuted = !isGloballyMuted;
+        volumeSlider.value = isGloballyMuted ? 0 : globalVolume;
+        musicEl.volume = isGloballyMuted ? 0 : globalVolume;
+        musicEl.muted = isGloballyMuted;
+        muteBtn.textContent = isGloballyMuted ? '🔇' : '🔊';
+    };
+
+    // Standardwerte beim Laden der Seite setzen
+    volumeSlider.value = globalVolume;
+    musicEl.volume = globalVolume;
+    if(videoPlaylist.length > 1) { videoEl.src = videoPlaylist[1].url; videoSelect.value = videoPlaylist[1].url; }
+    if(musicPlaylist.length > 1) { musicEl.src = musicPlaylist[0].url; musicSelect.value = musicPlaylist[0].url; }
+    
+    // Standard-Vordergrund-Medium setzen
+    if(mediaOverlayPlaylist.length > 1) { 
+        const initialUrl = mediaOverlayPlaylist[1].url;
+        mediaOverlaySelect.value = initialUrl;
+        displayMedia(initialUrl);
+    }
+}
+
+        function showNotification(message, isError = false) {
+            const notification = document.getElementById('notification');
+            if(!notification) return;
+            notification.textContent = message;
+            notification.classList.remove('bg-green-500', 'bg-red-500', 'hidden', 'opacity-0');
+            notification.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
+            
+            setTimeout(() => notification.classList.remove('opacity-0'), 10);
+            setTimeout(() => {
+                notification.classList.add('opacity-0');
+                setTimeout(() => notification.classList.add('hidden'), 500);
+            }, 3000);
+        }
+
+        function saveGame() {
+            if(gameState === 'SETUP' || !territories || territories.length === 0 || isDemoMode) { 
+                showNotification("Nichts zu speichern!", true); return; 
+            }
+
+            const mediaSettings = {
+                videoUrl: document.getElementById('video-select').value,
+                musicUrl: document.getElementById('music-select').value,
+                imageUrl: document.getElementById('image-select').value, // Behält die ID für Kompatibilität
+                soundSet: document.getElementById('sound-set-select').value,
+                volume: document.getElementById('volume-slider').value,
+                isMuted: isGloballyMuted
+            };
+
+            const saveState = {
+                territories, aiPlayers, NUM_PLAYERS, NUM_TERRITORIES, difficulty, currentPlayerId, gameState, reinforcements, hasFortified, playerDefeatedNotified, gameLog, gameStartTime, humanPlayerName,
+                kiConfig: KI_CONFIG, gameRules: GAME_RULES, eventsConfig: EVENTS_CONFIG, mediaSettings: mediaSettings
+            };
+
+            localStorage.setItem('spacewar_savegame', JSON.stringify(saveState));
+            showNotification('Spielstand gespeichert!');
+        }
+
+        function loadGame() {
+            const savedStateJSON = localStorage.getItem('spacewar_savegame');
+            if (!savedStateJSON) { showNotification('Kein Spielstand gefunden!', true); return; }
+            
+            isDemoMode = false;
+            const savedState = JSON.parse(savedStateJSON);
+            
+            Object.assign(this, savedState);
+            humanPlayerName = savedState.humanPlayerName || 'Spieler';
+            document.getElementById('player-name-input').value = humanPlayerName;
+            
+            if (savedState.kiConfig) Object.assign(KI_CONFIG, savedState.kiConfig);
+            if (savedState.gameRules) Object.assign(GAME_RULES, savedState.gameRules);
+            if (savedState.eventsConfig) Object.assign(EVENTS_CONFIG, savedState.eventsConfig);
+            
+            populateAdvancedSettings();
+
+            if (savedState.mediaSettings) {
+                const s = savedState.mediaSettings;
+                document.getElementById('video-select').value = s.videoUrl; document.getElementById('background-video').src = s.videoUrl; if(s.videoUrl) document.getElementById('background-video').play();
+                document.getElementById('music-select').value = s.musicUrl; document.getElementById('background-music').src = s.musicUrl; if(s.musicUrl) document.getElementById('background-music').play();
+                document.getElementById('image-select').value = s.imageUrl; document.getElementById('overlay-video').src = s.imageUrl; if(s.imageUrl) document.getElementById('overlay-video').play();
+                document.getElementById('sound-set-select').value = s.soundSet; currentSoundSetIndex = s.soundSet;
+                globalVolume = parseFloat(s.volume); document.getElementById('volume-slider').value = globalVolume; document.getElementById('background-music').volume = globalVolume;
+                isGloballyMuted = s.isMuted; document.getElementById('background-music').muted = isGloballyMuted; document.getElementById('mute-btn').textContent = isGloballyMuted ? '🔇' : '🔊';
+            }
+
+            territories.forEach(t => { t.position = new THREE.Vector3(t.position.x, t.position.y, t.position.z); });
+            
+            initGame(true);
+            updateLogbookDisplay();
+
+            if (currentPlayerId !== 1) setTimeout(() => endTurn(), 1000);
+        }
+        
+        function applyAdvancedSettings() {
+            KI_CONFIG.attackerWinChance = parseFloat(document.getElementById('attacker-win-chance-slider').value) / 100;
+            KI_CONFIG.attackThresholdConfig.baseValue = parseFloat(document.getElementById('attack-base-slider').value);
+            KI_CONFIG.attackThresholdConfig.aggressionMultiplier = parseFloat(document.getElementById('attack-multiplier-slider').value);
+            KI_CONFIG.lateGameAggression.startTurn = parseInt(document.getElementById('late-game-turn-input').value, 10);
+            KI_CONFIG.lateGameAggression.increasePerTurn = parseFloat(document.getElementById('late-game-increase-slider').value);
+            KI_CONFIG.aggressionWeights.lowChance = parseInt(document.getElementById('low-aggro-chance-slider').value, 10);
+            KI_CONFIG.aggressionWeights.highChance = parseInt(document.getElementById('high-aggro-chance-slider').value, 10);
+            GAME_RULES.planetBonusThreshold = parseInt(document.getElementById('planet-bonus-threshold-slider').value, 10);
+            GAME_RULES.planetBonusAmount = parseInt(document.getElementById('planet-bonus-amount-slider').value, 10);
+            EVENTS_CONFIG.enabled = document.getElementById('toggle-random-events').checked;
+            EVENTS_CONFIG.chancePerTurn = parseInt(document.getElementById('event-chance-slider').value, 10) / 100;
+            EVENTS_CONFIG.meteorDamagePercent = parseInt(document.getElementById('meteor-damage-slider').value, 10) / 100;
+            EVENTS_CONFIG.weights.solarStorm = parseInt(document.getElementById('weight-solar-storm-slider').value, 10);
+            EVENTS_CONFIG.weights.meteorShower = parseInt(document.getElementById('weight-meteor-shower-slider').value, 10);
+            EVENTS_CONFIG.weights.asteroidImpact = parseInt(document.getElementById('weight-asteroid-impact-slider').value, 10);
+            EVENTS_CONFIG.weights.supernova = parseInt(document.getElementById('weight-supernova-slider').value, 10); // <-- NEU
+            EVENTS_CONFIG.weights.passingComet = parseInt(document.getElementById('weight-passing-comet-slider').value, 10);
+            EVENTS_CONFIG.weights.ancientProbe = parseInt(document.getElementById('weight-ancient-probe-slider').value, 10);
+            EVENTS_CONFIG.weights.mysteriousSignal = parseInt(document.getElementById('weight-mysterious-signal-slider').value, 10);
+        }
+
+        function populateAdvancedSettings() {
+            const setupSlider = (sliderId, valueId, value, isFloat = false) => {
+                const slider = document.getElementById(sliderId); const valueDisplay = document.getElementById(valueId);
+                if(slider && valueDisplay) {
+                    slider.value = value; valueDisplay.textContent = parseFloat(value).toFixed(isFloat ? 2 : 0);
+                    slider.oninput = () => { valueDisplay.textContent = parseFloat(slider.value).toFixed(isFloat ? 2 : 0); };
+                }
+            };
+            setupSlider('attacker-win-chance-slider', 'attacker-win-chance-value', KI_CONFIG.attackerWinChance * 100);
+            setupSlider('attack-base-slider', 'attack-base-value', KI_CONFIG.attackThresholdConfig.baseValue, true);
+            setupSlider('attack-multiplier-slider', 'attack-multiplier-value', KI_CONFIG.attackThresholdConfig.aggressionMultiplier, true);
+            setupSlider('late-game-increase-slider', 'late-game-increase-value', KI_CONFIG.lateGameAggression.increasePerTurn, true);
+            setupSlider('low-aggro-chance-slider', 'low-aggro-chance-value', KI_CONFIG.aggressionWeights.lowChance);
+            setupSlider('high-aggro-chance-slider', 'high-aggro-chance-value', KI_CONFIG.aggressionWeights.highChance);
+            document.getElementById('late-game-turn-input').value = KI_CONFIG.lateGameAggression.startTurn;
+            setupSlider('planet-bonus-threshold-slider', 'planet-bonus-threshold-value', GAME_RULES.planetBonusThreshold);
+            setupSlider('planet-bonus-amount-slider', 'planet-bonus-amount-value', GAME_RULES.planetBonusAmount);
+            setupSlider('event-chance-slider', 'event-chance-value', EVENTS_CONFIG.chancePerTurn * 100);
+            setupSlider('meteor-damage-slider', 'meteor-damage-value', EVENTS_CONFIG.meteorDamagePercent * 100);
+            setupSlider('weight-solar-storm-slider', 'weight-solar-storm-value', EVENTS_CONFIG.weights.solarStorm);
+            setupSlider('weight-meteor-shower-slider', 'weight-meteor-shower-value', EVENTS_CONFIG.weights.meteorShower);
+            setupSlider('weight-asteroid-impact-slider', 'weight-asteroid-impact-value', EVENTS_CONFIG.weights.asteroidImpact);
+            setupSlider('weight-supernova-slider', 'weight-supernova-value', EVENTS_CONFIG.weights.supernova); // <-- NEU
+            setupSlider('weight-passing-comet-slider', 'weight-passing-comet-value', EVENTS_CONFIG.weights.passingComet);
+            setupSlider('weight-ancient-probe-slider', 'weight-ancient-probe-value', EVENTS_CONFIG.weights.ancientProbe);
+            setupSlider('weight-mysterious-signal-slider', 'weight-mysterious-signal-value', EVENTS_CONFIG.weights.mysteriousSignal);
+
+            const eventsToggle = document.getElementById('toggle-random-events'); const eventsLabel = document.getElementById('toggle-random-events-label');
+            if (eventsToggle && eventsLabel) {
+                eventsToggle.checked = EVENTS_CONFIG.enabled; eventsLabel.textContent = EVENTS_CONFIG.enabled ? 'An' : 'Aus';
+                eventsToggle.onchange = () => { eventsLabel.textContent = eventsToggle.checked ? 'An' : 'Aus'; };
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('territory-count-slider').addEventListener('input', (e) => { document.getElementById('territory-count-value').textContent = e.target.value; });
+            document.getElementById('status-bar').addEventListener('click', function() { this.classList.toggle('mt-auto'); this.classList.toggle('mt-4'); this.classList.toggle('mb-4'); });
+            const mediaControls = document.getElementById('media-controls'); const toggleBtn = document.getElementById('toggle-media-controls-btn'); const toggleIcon = document.getElementById('toggle-media-icon');
+            toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); mediaControls.classList.toggle('-translate-x-full'); toggleIcon.innerHTML = mediaControls.classList.contains('-translate-x-full') ? '&#9654;' : '&#9664;'; });
+            document.getElementById('player-name-input').addEventListener('input', (e) => { humanPlayerName = e.target.value.trim() || 'Spieler'; updateStatus(); });
+
+            function runIntro() {
+                const introOverlay = document.getElementById('intro-overlay');
+                const introTextContainer = document.getElementById('intro-text');
+                const setupContainer = document.getElementById('setup-container');
+                const text = "Irgendwo in den unendlichen Weiten des Alls... beginnt ein neuer Krieg um die Herrschaft über die Galaxie.";
+                let totalDelay = 0;
+                const delayIncrement = 50;
+                const words = text.split(' ');
+
+                words.forEach((word, wordIndex) => {
+                    const wordWrapper = document.createElement('span');
+                    wordWrapper.style.display = 'inline-block';
+                    word.split('').forEach((char) => {
+                        const letterSpan = document.createElement('span');
+                        letterSpan.className = 'intro-letter';
+                        letterSpan.textContent = char;
+                        letterSpan.style.animationDelay = `${totalDelay}ms`;
+                        wordWrapper.appendChild(letterSpan);
+                        totalDelay += delayIncrement;
+                    });
+                    introTextContainer.appendChild(wordWrapper);
+                    if (wordIndex < words.length - 1) {
+                        const spaceSpan = document.createElement('span');
+                        spaceSpan.innerHTML = '&nbsp;'; 
+                        introTextContainer.appendChild(spaceSpan);
+                    }
+                });
+                
+                const introDuration = totalDelay + 2000;
+                setTimeout(() => {
+                    introOverlay.classList.add('opacity-0');
+                    setTimeout(() => {
+                        introOverlay.style.display = 'none';
+                        setupContainer.classList.remove('hidden');
+                        setTimeout(() => setupContainer.classList.remove('opacity-0'), 50);
+                    }, 1000);
+                }, introDuration);
+            }
+
+            if (localStorage.getItem('spacewar_savegame')) { document.getElementById('load-game-btn').classList.remove('hidden'); }
+            
+            document.getElementById('start-game-btn').addEventListener('click', () => { isDemoMode = false; applyAdvancedSettings(); initGame(false); });
+            document.getElementById('start-demo-btn').addEventListener('click', () => { isDemoMode = true; applyAdvancedSettings(); initGame(false); });
+            document.getElementById('load-game-btn').addEventListener('click', loadGame);
+            document.getElementById('save-game-btn').addEventListener('click', saveGame);
+            document.getElementById('end-turn-btn').addEventListener('click', endTurn);
+            document.getElementById('restart-btn').addEventListener('click', () => location.reload());
+            document.getElementById('rules-btn').addEventListener('click', () => document.getElementById('rules-modal').classList.remove('hidden'));
+            document.getElementById('close-rules-btn').addEventListener('click', () => document.getElementById('rules-modal').classList.add('hidden'));
+            document.getElementById('logbook-btn').addEventListener('click', () => { updateLogbookDisplay(); document.getElementById('logbook-modal').classList.remove('hidden'); });
+            document.getElementById('close-logbook-btn').addEventListener('click', () => document.getElementById('logbook-modal').classList.add('hidden'));
+            document.getElementById('close-defeat-btn').addEventListener('click', () => document.getElementById('player-defeat-modal').classList.add('hidden'));
+            document.getElementById('toggle-advanced-settings-btn').addEventListener('click', () => { document.getElementById('advanced-settings-container').classList.toggle('hidden'); });
+
+            populateAdvancedSettings();
+            setupMediaControls();
+            initThree();
+            animate();
+            
+            const canvasContainer = document.getElementById('game-canvas-container');
+            canvasContainer.addEventListener('contextmenu', (e) => e.preventDefault());
+            canvasContainer.addEventListener('mousemove', onMouseMove, false);
+            canvasContainer.addEventListener('click', onMouseClick, false);
+            window.addEventListener('resize', onWindowResize, false);
+            
+            runIntro();
+        });
+    </script>
+</body>
+</html>

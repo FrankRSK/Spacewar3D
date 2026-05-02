@@ -1,0 +1,11 @@
+Bei "Spacewar 3D" handelt es sich um ein rundenbasiertes 3D-Strategiespiel im Weltraum, das an Klassiker wie "Risiko" erinnert.
+
+Das Ziel des Spiels ist die Eroberung aller Planeten in der Galaxie. Du spielst gegen bis zu fünf KI-Gegner. Der Spielablauf gliedert sich in Runden, die aus drei Phasen bestehen:
+
+- Verstärkungsphase: Du erhältst neue Raumschiffe, basierend auf der Anzahl deiner Planeten.
+- Angriffsphase: Du attackierst von deinen Planeten aus benachbarte feindliche Systeme.
+- Befestigungsphase: Du kannst einmalig Truppen zwischen deinen verbundenen Planeten verschieben, um deine Front zu stärken.
+
+Eine besondere Dynamik entsteht durch unvorhersehbare Zufallsereignisse. Dazu gehören Sonnenstürme, die Flugrouten verändern, Meteoritenschauer, die Flotten dezimieren, oder sogar Asteroideneinschläge und Supernovae, die ganze Planeten vernichten können.
+
+Das Spiel ist umfangreich anpassbar: Spieleranzahl, Planetenzahl, Schwierigkeit und viele Detailregeln zum KI-Verhalten und zu den Ereignissen können eingestellt werden.

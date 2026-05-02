@@ -1,0 +1,14 @@
+# OS-spezifische Dateien
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor-Konfigurationen
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python-Cache (für lokalen HTTP-Server)
+__pycache__/
+*.pyc
