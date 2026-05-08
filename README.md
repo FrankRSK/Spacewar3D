@@ -1,35 +1,43 @@
-# Spacewar 3D (Version 0.69)
-Ein rundenbasiertes 3D-Strategiespiel im Weltraum, inspiriert von Klassikern wie *Risiko*.
+# Spacewar 3D 🚀 (v0.69)
 
-## Beschreibung
-Das Ziel ist die Eroberung aller Planeten der Galaxie. Du trittst gegen bis zu fünf KI-Gegner an. Das Spiel verfügt über anpassbare Regeln, diverse Zufallsereignisse und flexible Einstellungen für Schwierigkeitsgrad, Spielfläche und Medien.
+> Ein rundenbasiertes 3D-Strategiespiel im Weltraum – inspiriert von Klassikern wie *Risiko*.
 
-## Technischer Stack
-- Statisches Single-File-Projekt (HTML, CSS, JS inline in `index.html`)
-- Kein Build-System, keine npm-Abhängigkeiten
-- Three.js r128 & OrbitControls für 3D-Rendering
-- Tailwind CSS für UI-Styling
-- Alle Bibliotheken werden via CDN geladen
-- Media-Dateien (`.mp3`, `.mp4`, `.png`) liegen flach im Projektroot
+![Spacewar3D](VG.png)
 
-## Schnellstart
-1. Projektdateien lokal verfügbar machen (Klonen oder Download)
-2. Spiel starten:
-   - Option A: `index.html` direkt im Browser öffnen
-   - Option B: Lokalen HTTP-Server starten (empfohlen für korrektes Medien-Laden):
-     ```bash
-     python3 -m http.server 8000
-     ```
-     Danach `http://localhost:8000/index.html` im Browser aufrufen
+## Über das Spiel
+
+Erobere alle Planeten der Galaxie! Tritt gegen bis zu fünf KI-Gegner an. Das Spiel bietet anpassbare Regeln, zufällige Weltraum-Ereignisse und flexible Einstellungen für Schwierigkeitsgrad, Spielfeldgröße und Medien.
 
 ## Features
-- 1 menschlicher Spieler + bis zu 5 KI-Gegner
-- Einstellbare Parameter: Spieleranzahl (2-6), Planetenzahl (15-50), Schwierigkeitsgrad
-- Konfigurierbare KI (Aggressionslevel, Angriffsverhalten)
-- Dynamische Zufallsereignisse (Sonnenstürme, Meteoritenschauer, Supernovae etc.)
-- Medienanpassung: Hintergrundvideos, Musik, Sound-Sets und Vordergrund-Overlays wählbar
-- Spielstände via `localStorage` speichern/laden
+- 🌌 **3D-Weltraum-Karte** mit Three.js – dreh- und zoombar
+- 🤖 **KI-Gegner** mit mehreren Schwierigkeitsstufen  
+- 🎲 **Zufallsereignisse:** Sonnenstürme, Meteoriten, Supernovae, Kometen, Sonden
+- 🔊 **Soundeffekte & Musik** für volle Immersion
+- 📱 **Desktop & Mobile** – Maus- und Touch-Steuerung
+- ⚙️ **Anpassbare Regeln** für erfahrene Spieler
 
-## Steuerung
-- **Maus**: Linksklick auf Planeten für Aktionen, Rechtsklick zum Rotieren, Scrollen zum Zoomen
-- Alle weiteren Aktionen über die In-Game UI-Steuerelemente
+## Schnellstart
+
+1. **Repo klonen** oder [im Browser spielen](https://github.com/FrankRSK/Spacewar3D) (`index.html` öffnen)
+2. Keine Installation nötig – alles läuft im Browser
+3. Spiel starten und loslegen!
+
+```bash
+git clone https://github.com/FrankRSK/Spacewar3D.git
+cd Spacewar3D
+# Einfach index.html im Browser öffnen!
+```
+
+## Technik
+
+| Komponente | Technologie |
+|-----------|-------------|
+| 3D-Engine | Three.js r128 + OrbitControls |
+| UI | Tailwind CSS |
+| Sound | Web Audio API |
+| Build | Keiner – reines HTML/CSS/JS |
+| Abhängigkeiten | Alle via CDN geladen |
+
+## Lizenz
+
+MIT © 2026 Frank Kemper
